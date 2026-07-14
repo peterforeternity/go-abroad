@@ -1,0 +1,683 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  STUDY_ABROAD_FALLBACK,
+  type Destination,
+  type Insight,
+  type InsightType,
+  type StudyAbroadPayload,
+} from "./lib/study-abroad-data";
+
+type AuthMode = "login" | "signup" | "reset";
+type ModalType = "auth" | "assessment" | null;
+
+const TYPE_LABELS: Record<InsightType | "all", string> = {
+  all: "全部",
+  policy: "政策",
+  university: "院校",
+  major: "专业",
+  scholarship: "奖学金",
+};
+
+const HERO_PILLS = ["英国", "美国", "商科", "奖学金", "申请时间线"];
+
+type StudyDataApiBody = {
+  ok?: boolean;
+  data?: StudyAbroadPayload;
+  error?: { message?: string };
+};
+
+function unwrapStudyData(body: StudyDataApiBody): StudyAbroadPayload | null {
+  return body.ok === true && body.data ? body.data : null;
+}
+
+function formatSyncLabel(meta: StudyAbroadPayload["meta"]): string {
+  if (meta.isDemo) return "开发演示";
+  if (!meta.lastSyncedAt) return "未同步";
+  return `${meta.lastSyncedAt.slice(11, 16)} 更新`;
+}
+
+export default function Home() {
+  const [data, setData] = useState<StudyAbroadPayload>(
+    STUDY_ABROAD_FALLBACK,
+  );
+  const [query, setQuery] = useState("");
+  const [selectedType, setSelectedType] = useState<InsightType | "all">(
+    "all",
+  );
+  const [selectedCountry, setSelectedCountry] = useState("全部国家");
+  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
+  const [modal, setModal] = useState<ModalType>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [assessmentStep, setAssessmentStep] = useState(0);
+  const [assessmentAnswers, setAssessmentAnswers] = useState<string[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [toast, setToast] = useState("");
+  const [activeNav, setActiveNav] = useState("探索目的地");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/study-abroad", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return unwrapStudyData((await response.json()) as StudyDataApiBody);
+      })
+      .then((nextData: StudyAbroadPayload | null) => {
+        if (!cancelled && nextData) setData(nextData);
+      })
+      .catch(() => {
+        // The fallback keeps the first viewport useful when the API is offline.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 3200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const visibleInsights = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return data.insights.filter((item) => {
+      const matchesType = selectedType === "all" || item.type === selectedType;
+      const matchesCountry =
+        selectedCountry === "全部国家" || item.country === selectedCountry;
+      const haystack = [
+        item.title,
+        item.summary,
+        item.country,
+        item.meta,
+        ...item.tags,
+      ]
+        .join(" ")
+        .toLowerCase();
+      const matchesQuery = !normalizedQuery || haystack.includes(normalizedQuery);
+
+      return matchesType && matchesCountry && matchesQuery;
+    });
+  }, [data.insights, query, selectedCountry, selectedType]);
+
+  const showToast = (message: string) => setToast(message);
+
+  const scrollTo = (id: string, label?: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+    if (label) setActiveNav(label);
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const syncResponse = await fetch("/api/study-abroad/sync", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const syncBody = (await syncResponse.json()) as StudyDataApiBody;
+      if (!syncResponse.ok || syncBody.ok !== true) {
+        throw new Error(syncBody.error?.message ?? "sync-failed");
+      }
+
+      const dataResponse = await fetch("/api/study-abroad", {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (!dataResponse.ok) throw new Error("refresh-failed");
+      const nextData = unwrapStudyData((await dataResponse.json()) as StudyDataApiBody);
+      if (!nextData) throw new Error("invalid-data-response");
+      setData(nextData);
+      showToast("数据已同步 · 结果已写入缓存");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "同步失败，请稍后重试");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const toggleSaved = (id: string) => {
+    setSavedIds((current) => {
+      const isSaved = current.includes(id);
+      showToast(isSaved ? "已从我的清单移除" : "已保存到我的清单");
+      return isSaved ? current.filter((savedId) => savedId !== id) : [...current, id];
+    });
+  };
+
+  const chooseDestination = (destination: Destination) => {
+    setSelectedCountry(destination.country);
+    setSelectedType("all");
+    scrollTo("insights", "申请信息");
+    showToast(`已切换到 ${destination.country} · 为你筛选相关信息`);
+  };
+
+  const openAuth = (mode: AuthMode = "login") => {
+    setAuthMode(mode);
+    setModal("auth");
+  };
+
+  const resetAssessment = () => {
+    setAssessmentStep(0);
+    setAssessmentAnswers([]);
+  };
+
+  const openAssessment = () => {
+    resetAssessment();
+    setModal("assessment");
+  };
+
+  return (
+    <main className="app-shell">
+      <div className="grain" aria-hidden="true" />
+      <header className="topbar">
+        <button className="brand" onClick={() => scrollTo("top")} aria-label="回到首页">
+          <span className="brand-mark" aria-hidden="true">
+            ↗
+          </span>
+          <span>
+            启程
+            <small>STUDY ABROAD</small>
+          </span>
+        </button>
+
+        <nav className="desktop-nav" aria-label="主导航">
+          {[
+            ["探索目的地", "explore"],
+            ["申请信息", "insights"],
+            ["规划工具", "planning"],
+          ].map(([label, id]) => (
+            <button
+              className={activeNav === label ? "nav-link active" : "nav-link"}
+              key={label}
+              onClick={() => scrollTo(id, label)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="topbar-actions">
+          <button
+            className="icon-button"
+            aria-label="聚焦搜索"
+            onClick={() => {
+              scrollTo("explore");
+              window.setTimeout(() => document.getElementById("global-search")?.focus(), 450);
+            }}
+          >
+            ⌕
+          </button>
+          <button className="signin-button" onClick={() => openAuth("login")}>
+            登录 / 注册 <span>↗</span>
+          </button>
+        </div>
+      </header>
+
+      <section className="hero section-container" id="top">
+        <div className="hero-copy">
+          <div className="eyebrow">
+            <span className="eyebrow-dot" />
+            为中国学生打造的留学决策工作台
+          </div>
+          <h1>
+            把留学这件事，
+            <br />
+            <em>变成一张清晰的路线图。</em>
+          </h1>
+          <p className="hero-description">
+            政策、院校、专业与奖学金，放进一个始终更新的空间。先了解，再比较，最后做出适合你的决定。
+          </p>
+          <div className="hero-actions">
+            <button className="button-primary" onClick={() => scrollTo("explore", "探索目的地")}>
+              开始探索 <span>↗</span>
+            </button>
+            <button className="button-quiet" onClick={openAssessment}>
+              <span className="play-dot">▶</span> 5 分钟快速评估
+            </button>
+          </div>
+          <div className="hero-proof">
+            <div className="avatar-stack" aria-hidden="true">
+              <span>L</span>
+              <span>M</span>
+              <span>Y</span>
+              <span>+</span>
+            </div>
+            <div>
+              <strong>12,800+</strong>
+              <span>位同学正在使用启程做规划</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="hero-visual" aria-label="留学申请路线概览">
+          <div className="hero-visual-header">
+            <span>你的申请路线</span>
+            <span className="live-badge"><i /> LIVE DATA</span>
+          </div>
+          <div className="orbit-stage">
+            <div className="orbit orbit-one" />
+            <div className="orbit orbit-two" />
+            <div className="orbit-dot dot-one" />
+            <div className="orbit-dot dot-two" />
+            <div className="orbit-dot dot-three" />
+            <div className="orbit-core">
+              <span>2026</span>
+              <strong>秋季入学</strong>
+              <small>还有 214 天</small>
+            </div>
+            <div className="floating-card floating-card-top">
+              <span className="mini-icon mini-coral">✦</span>
+              <span><b>英国</b><small>PSW 工签</small></span>
+            </div>
+            <div className="floating-card floating-card-bottom">
+              <span className="mini-icon mini-sun">✹</span>
+              <span><b>奖学金</b><small>18 个匹配机会</small></span>
+            </div>
+          </div>
+          <div className="hero-visual-footer">
+            <div><span>材料完整度</span><strong>72%</strong></div>
+            <div className="mini-progress"><i /></div>
+            <span className="hero-footer-arrow">↗</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="search-panel section-container" id="explore">
+        <div className="search-panel-top">
+          <div>
+            <span className="section-kicker">实时数据探索</span>
+            <h2>你想先了解什么？</h2>
+          </div>
+          <button className="sync-button" onClick={handleSync} disabled={syncing}>
+            <span className={syncing ? "sync-icon spinning" : "sync-icon"}>↻</span>
+            {syncing ? "同步中" : "更新数据"}
+            <small>{formatSyncLabel(data.meta)}</small>
+          </button>
+        </div>
+        <div className="search-controls">
+          <label className="search-input-wrap" htmlFor="global-search">
+            <span aria-hidden="true">⌕</span>
+            <input
+              id="global-search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索国家、院校、专业、奖学金..."
+            />
+            <kbd>⌘ K</kbd>
+          </label>
+          <div className="hero-pills" aria-label="热门搜索">
+            {HERO_PILLS.map((pill) => (
+              <button
+                key={pill}
+                className="hero-pill"
+                onClick={() => {
+                  setQuery(pill);
+                  scrollTo("insights", "申请信息");
+                }}
+              >
+                {pill} <span>↗</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="search-panel-footer">
+          <span><i className="status-dot" /> {data.meta.isDemo ? "demo · 演示数据，仅用于开发验证" : `${data.meta.source} · ${data.meta.freshness}`}</span>
+          <button onClick={() => { setQuery(""); setSelectedCountry("全部国家"); setSelectedType("all"); }}>
+            清空筛选 <span>×</span>
+          </button>
+        </div>
+      </section>
+
+      <section className="section-container destinations-section" id="destinations">
+        <div className="section-heading">
+          <div>
+            <span className="section-kicker">01 · 目的地概览</span>
+            <h2>从一个目的地开始</h2>
+          </div>
+          <button className="text-link" onClick={() => { setSelectedCountry("全部国家"); scrollTo("insights", "申请信息"); }}>
+            查看全部目的地 <span>↗</span>
+          </button>
+        </div>
+        <div className="destination-grid">
+          {data.destinations.slice(0, 4).map((destination, index) => (
+            <DestinationCard
+              destination={destination}
+              index={index}
+              key={destination.id}
+              onSelect={chooseDestination}
+            />
+          ))}
+        </div>
+        <div className="destination-mini-row">
+          {data.destinations.slice(4).map((destination) => (
+            <button className="destination-mini" key={destination.id} onClick={() => chooseDestination(destination)}>
+              <span>{destination.flag}</span>
+              <strong>{destination.country}</strong>
+              <small>{destination.stat} 项目</small>
+              <span className="mini-arrow">↗</span>
+            </button>
+          ))}
+          <button className="destination-mini destination-mini-all" onClick={() => scrollTo("insights", "申请信息")}>
+            <span className="plus-bubble">+</span>
+            <strong>还有 40+ 个目的地</strong>
+            <small>探索全球更多可能</small>
+            <span className="mini-arrow">↗</span>
+          </button>
+        </div>
+      </section>
+
+      <section className="section-container insights-layout" id="insights">
+        <div className="insights-main">
+          <div className="section-heading insights-heading">
+            <div>
+              <span className="section-kicker">02 · 申请信息</span>
+              <h2>把复杂问题，拆成下一步</h2>
+            </div>
+            <span className="result-count">{visibleInsights.length} 条匹配</span>
+          </div>
+          <div className="filter-bar">
+            <div className="filter-tabs" role="tablist" aria-label="信息类型">
+              {(Object.keys(TYPE_LABELS) as Array<InsightType | "all">).map((type) => (
+                <button
+                  className={selectedType === type ? "filter-tab active" : "filter-tab"}
+                  key={type}
+                  onClick={() => setSelectedType(type)}
+                  role="tab"
+                  aria-selected={selectedType === type}
+                >
+                  {TYPE_LABELS[type]}
+                </button>
+              ))}
+            </div>
+            <label className="country-select-wrap">
+              <span>目的地</span>
+              <select value={selectedCountry} onChange={(event) => setSelectedCountry(event.target.value)}>
+                <option>全部国家</option>
+                {data.destinations.map((destination) => <option key={destination.id}>{destination.country}</option>)}
+                <option>欧洲</option>
+              </select>
+              <span className="select-chevron">⌄</span>
+            </label>
+          </div>
+          <div className="insight-list">
+            {visibleInsights.length ? visibleInsights.map((insight, index) => (
+              <InsightCard
+                insight={insight}
+                index={index}
+                isSaved={savedIds.includes(insight.id)}
+                key={insight.id}
+                onOpen={() => setSelectedInsight(insight)}
+                onSave={() => toggleSaved(insight.id)}
+              />
+            )) : (
+              <div className="empty-state">
+                <span>⌕</span>
+                <strong>还没有找到匹配内容</strong>
+                <p>换个关键词，或试试清空筛选。</p>
+                <button onClick={() => { setQuery(""); setSelectedCountry("全部国家"); setSelectedType("all"); }}>清空筛选</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <aside className="radar-card" id="planning">
+          <div className="radar-card-top">
+            <div>
+              <span className="section-kicker">03 · 规划工具</span>
+              <h3>你的申请雷达</h3>
+            </div>
+            <span className="radar-status">未登录</span>
+          </div>
+          <p className="radar-intro">登录后保存你的目标院校，启程会帮你把下一步排好。</p>
+          <div className="radar-progress-block">
+            <div className="radar-progress-label"><span>探索阶段</span><strong>2 / 5</strong></div>
+            <div className="radar-progress"><i /></div>
+          </div>
+          <div className="radar-steps">
+            <div className="radar-step complete"><span>✓</span><div><strong>确定目标方向</strong><small>已完成 · 选择感兴趣的国家</small></div></div>
+            <div className="radar-step current"><span>2</span><div><strong>收集申请信息</strong><small>进行中 · 还有 4 个关键节点</small></div></div>
+            <div className="radar-step"><span>3</span><div><strong>匹配院校与项目</strong><small>解锁后继续</small></div></div>
+          </div>
+          <button className="radar-button" onClick={() => openAuth("signup")}>创建我的申请清单 <span>↗</span></button>
+          <div className="radar-footnote"><span>✦</span> 免费使用 · 无需绑定银行卡</div>
+        </aside>
+      </section>
+
+      <section className="section-container planning-strip">
+        <div className="planning-copy">
+          <span className="section-kicker">给正在认真准备的你</span>
+          <h2>别让信息的噪音，<br /><em>盖过你真正想去的地方。</em></h2>
+          <p>每一次收藏，都会变成你的申请地图。登录后把零散的信息，整理成一条能执行的路径。</p>
+          <button className="button-primary" onClick={() => openAuth("signup")}>建立我的路线 <span>↗</span></button>
+        </div>
+        <div className="planning-art" aria-hidden="true">
+          <div className="planning-stamp">NEXT<br />STOP</div>
+          <div className="planning-route route-one"><span>01</span><i /></div>
+          <div className="planning-route route-two"><span>02</span><i /></div>
+          <div className="planning-route route-three"><span>03</span><i /></div>
+          <div className="plane-mark">↗</div>
+          <span className="art-label label-one">找到方向</span>
+          <span className="art-label label-two">比较选择</span>
+          <span className="art-label label-three">开始出发</span>
+        </div>
+      </section>
+
+      <footer className="footer section-container">
+        <div className="footer-brand">
+          <button className="brand" onClick={() => scrollTo("top")}>
+            <span className="brand-mark" aria-hidden="true">↗</span>
+            <span>启程<small>STUDY ABROAD</small></span>
+          </button>
+          <p>让每一个想出发的人，都更接近自己的答案。</p>
+        </div>
+        <div className="footer-links">
+          <div><span>探索</span><button onClick={() => scrollTo("destinations")}>目的地</button><button onClick={() => scrollTo("insights")}>申请信息</button></div>
+          <div><span>工具</span><button onClick={openAssessment}>快速评估</button><button onClick={() => openAuth("signup")}>我的清单</button></div>
+          <div><span>关于</span><button onClick={() => showToast("我们会在下一个版本开放顾问预约")}>顾问服务</button><button onClick={() => showToast("帮助中心正在整理中")}>帮助中心</button></div>
+        </div>
+        <div className="footer-bottom"><span>© 2026 启程 · Study Abroad</span><span>数据同步中 · <i className="status-dot" /> 系统正常</span></div>
+      </footer>
+
+      {selectedInsight && (
+        <div className="overlay" onMouseDown={() => setSelectedInsight(null)}>
+          <article className="detail-drawer" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="drawer-close" aria-label="关闭详情" onClick={() => setSelectedInsight(null)}>×</button>
+            <div className={`detail-hero detail-${selectedInsight.accent}`}>
+              <div className="detail-icon">{selectedInsight.icon}</div>
+              <span>{TYPE_LABELS[selectedInsight.type]} · {selectedInsight.country}</span>
+              <h2>{selectedInsight.title}</h2>
+              <small>{selectedInsight.updated} 更新</small>
+            </div>
+            <div className="detail-body">
+              <div className="detail-tags">{selectedInsight.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div>
+              <p className="detail-lead">{selectedInsight.summary}</p>
+              <div className="detail-copy">{selectedInsight.detail.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
+              <button className="button-primary detail-save" onClick={() => toggleSaved(selectedInsight.id)}>
+                {savedIds.includes(selectedInsight.id) ? "已保存到我的清单" : "保存到我的清单"} <span>{savedIds.includes(selectedInsight.id) ? "✓" : "↗"}</span>
+              </button>
+            </div>
+          </article>
+        </div>
+      )}
+
+      {modal === "auth" && (
+        <AuthModal
+          mode={authMode}
+          onClose={() => setModal(null)}
+          onModeChange={setAuthMode}
+          onSuccess={(message) => showToast(message)}
+        />
+      )}
+
+      {modal === "assessment" && (
+        <AssessmentModal
+          step={assessmentStep}
+          answers={assessmentAnswers}
+          onClose={() => setModal(null)}
+          onAnswer={(answer) => {
+            setAssessmentAnswers((current) => [...current, answer]);
+            setAssessmentStep((current) => current + 1);
+          }}
+          onRestart={resetAssessment}
+          onSignup={() => openAuth("signup")}
+        />
+      )}
+
+      {toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}
+    </main>
+  );
+}
+
+function DestinationCard({
+  destination,
+  index,
+  onSelect,
+}: {
+  destination: Destination;
+  index: number;
+  onSelect: (destination: Destination) => void;
+}) {
+  return (
+    <button className={`destination-card destination-${destination.color}`} onClick={() => onSelect(destination)}>
+      <div className="destination-card-top"><span className="destination-index">0{index + 1}</span><span className="destination-flag">{destination.flag}</span><span className="destination-arrow">↗</span></div>
+      <div className="destination-card-copy"><span className="destination-region">{destination.region}</span><h3>{destination.country}</h3><p>{destination.headline}</p></div>
+      <div className="destination-card-bottom"><span>{destination.stat} <small>{destination.statLabel}</small></span><span className="trend"><i>↑</i> {destination.trend}</span></div>
+      <div className="destination-tags">{destination.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+    </button>
+  );
+}
+
+function InsightCard({
+  insight,
+  index,
+  isSaved,
+  onOpen,
+  onSave,
+}: {
+  insight: Insight;
+  index: number;
+  isSaved: boolean;
+  onOpen: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <article className="insight-card">
+      <div className={`insight-number insight-number-${insight.accent}`}>0{index + 1}</div>
+      <div className="insight-card-content">
+        <div className="insight-card-top"><span className={`type-badge type-${insight.accent}`}><i>{insight.icon}</i>{TYPE_LABELS[insight.type]}</span><span>{insight.country}</span><span className="insight-updated">{insight.updated}</span></div>
+        <button className="insight-title-button" onClick={onOpen}><h3>{insight.title}</h3></button>
+        <p>{insight.summary}</p>
+        <div className="insight-card-bottom"><div className="insight-tags">{insight.tags.map((tag) => <span key={tag}>{tag}</span>)}</div><span>{insight.meta}</span></div>
+      </div>
+      <div className="insight-card-actions"><button className={isSaved ? "save-button saved" : "save-button"} onClick={onSave} aria-label={isSaved ? "取消收藏" : "收藏"}>{isSaved ? "♥" : "♡"}</button><button className="open-button" onClick={onOpen} aria-label="打开详情">↗</button></div>
+    </article>
+  );
+}
+
+function AuthModal({
+  mode,
+  onClose,
+  onModeChange,
+  onSuccess,
+}: {
+  mode: AuthMode;
+  onClose: () => void;
+  onModeChange: (mode: AuthMode) => void;
+  onSuccess: (message: string) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
+
+  const titles = { login: "欢迎回来", signup: "从你的第一步开始", reset: "找回你的路线" };
+  const descriptions = {
+    login: "保存你的选择，随时回来继续规划。",
+    signup: "创建一个免费账户，把灵感变成申请清单。",
+    reset: "输入注册邮箱，我们会把下一步发给你。",
+  };
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!email.includes("@")) {
+      setMessage("请输入有效的邮箱地址");
+      return;
+    }
+    if (mode !== "reset" && password.length < 6) {
+      setMessage("密码至少需要 6 位字符");
+      return;
+    }
+    setMessage(mode === "signup" ? "验证邮件已发送到你的邮箱（演示）" : mode === "reset" ? "重置链接已发送（演示）" : "登录成功，欢迎回来（演示）");
+    window.setTimeout(() => onSuccess(mode === "signup" ? "账户已创建 · 继续探索吧" : mode === "reset" ? "重置邮件已发送" : "登录成功 · 你的清单已准备好"), 500);
+  };
+
+  return (
+    <div className="overlay auth-overlay" onMouseDown={onClose}>
+      <div className="auth-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="drawer-close" aria-label="关闭登录" onClick={onClose}>×</button>
+        <div className="auth-aside">
+          <span className="eyebrow"><span className="eyebrow-dot" />启程账户</span>
+          <h2>把你看中的每一个选择，<em>留在自己的地图上。</em></h2>
+          <div className="auth-quote"><span>“</span><p>好的规划不是替你决定，而是让你更确定自己想要什么。</p><small>— 启程编辑部</small></div>
+          <div className="auth-aside-note"><span className="mini-icon mini-sun">✹</span><span><strong>免费使用</strong><small>收藏、比较和申请时间线都不收费</small></span></div>
+        </div>
+        <div className="auth-form-panel">
+          <div className="auth-form-heading"><span className="section-kicker">{mode === "reset" ? "安全找回" : "个人工作台"}</span><h3>{titles[mode]}</h3><p>{descriptions[mode]}</p></div>
+          {mode !== "reset" && <div className="auth-tabs"><button className={mode === "login" ? "active" : ""} onClick={() => { onModeChange("login"); setMessage(""); }}>登录</button><button className={mode === "signup" ? "active" : ""} onClick={() => { onModeChange("signup"); setMessage(""); }}>注册</button></div>}
+          <form onSubmit={handleSubmit} className="auth-form">
+            {mode === "signup" && <label>你的称呼<input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：林墨" autoComplete="name" /></label>}
+            <label>邮箱地址<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required /></label>
+            {mode !== "reset" && <label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 6 位字符" autoComplete={mode === "login" ? "current-password" : "new-password"} required /></label>}
+            {mode === "login" && <button type="button" className="form-link" onClick={() => { onModeChange("reset"); setMessage(""); }}>忘记密码？</button>}
+            {message && <div className="form-message">{message}</div>}
+            <button className="button-primary auth-submit" type="submit">{mode === "login" ? "登录启程" : mode === "signup" ? "创建免费账户" : "发送重置链接"} <span>↗</span></button>
+          </form>
+          <div className="auth-divider"><span>或</span></div>
+          <a className="chatgpt-button" href="/signin-with-chatgpt?return_to=%2F"><span className="chatgpt-symbol">✳</span> 使用 ChatGPT 账户继续</a>
+          <p className="auth-legal">继续即表示你同意启程的服务条款与隐私政策。<br />邮箱验证与密码服务接入后将启用完整账户安全能力。</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssessmentModal({
+  step,
+  answers,
+  onClose,
+  onAnswer,
+  onRestart,
+  onSignup,
+}: {
+  step: number;
+  answers: string[];
+  onClose: () => void;
+  onAnswer: (answer: string) => void;
+  onRestart: () => void;
+  onSignup: () => void;
+}) {
+  const questions = [
+    { eyebrow: "01 / 03", title: "你现在最想去哪里？", options: ["英国 / 欧洲", "美国 / 加拿大", "澳洲 / 新西兰", "亚洲地区"] },
+    { eyebrow: "02 / 03", title: "你更看重什么？", options: ["专业与排名", "就业与签证", "预算与性价比", "生活方式"] },
+    { eyebrow: "03 / 03", title: "你准备到哪一步了？", options: ["还在了解方向", "已经有目标国家", "开始准备材料", "马上要提交申请"] },
+  ];
+  const current = questions[step];
+
+  return (
+    <div className="overlay assessment-overlay" onMouseDown={onClose}>
+      <div className="assessment-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="drawer-close" aria-label="关闭评估" onClick={onClose}>×</button>
+        {step < questions.length ? <>
+          <div className="assessment-top"><span className="section-kicker">启程快速评估</span><div className="assessment-progress"><i style={{ width: `${((step + 1) / 3) * 100}%` }} /></div><span>{step + 1} / 3</span></div>
+          <div className="assessment-heading"><span>{current.eyebrow}</span><h2>{current.title}</h2><p>选一个最接近你现在状态的答案，我们会据此生成一张起步路线。</p></div>
+          <div className="assessment-options">{current.options.map((option) => <button key={option} onClick={() => onAnswer(option)}><span>{String.fromCharCode(65 + current.options.indexOf(option))}</span>{option}<i>↗</i></button>)}</div>
+          <div className="assessment-foot"><span>无需登录 · 结果只属于你</span><span>{answers.length ? `已完成 ${answers.length} 题` : "约 2 分钟完成"}</span></div>
+        </> : <div className="assessment-result"><div className="result-orbit"><span>✦</span></div><span className="section-kicker">你的起步方向</span><h2>先从「目标清晰度」开始，<em>再谈哪所学校。</em></h2><p>根据你的回答，我们建议先整理目标国家、专业偏好与预算，再去比较院校。启程已经为你准备好下一步。</p><div className="result-tags"><span>{answers[0]}</span><span>{answers[1]}</span><span>{answers[2]}</span></div><button className="button-primary" onClick={onSignup}>保存这份路线 <span>↗</span></button><button className="button-quiet" onClick={onRestart}>重新评估</button></div>}
+      </div>
+    </div>
+  );
+}
