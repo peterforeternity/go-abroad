@@ -1,14 +1,14 @@
 # Cloudflare staging runbook
 
-本 runbook 只针对独立 staging，禁止复用或修改现有 production Sites/D1/KV/Worker。当前 staging 已创建独立 D1/KV，两个 migration 已应用，Worker 版本已上传并保持 100% 活跃；由于账户尚未配置 workers.dev 子域，Wrangler 在配置 Cron schedules 时退出，当前没有可访问网络入口，Cron 尚未确认生效。
+本 runbook 只针对独立 staging，禁止复用或修改现有 production Sites/D1/KV/Worker。当前 staging 已创建独立 D1/KV，两个 migration 已应用，Worker 版本已上传并保持 100% 活跃，云端 schedules API 已确认唯一 Cron 为 `*/5 * * * *`；当前仍没有 HTTP 网络入口。
 
 ## 0. 安全前置条件
 
 - 当前 production Sites 配置仍由 `.openai/hosting.json` 管理；不要把 staging 的 D1/KV ID 写入该文件。
 - 将 `wrangler.staging.example.jsonc` 复制为本地未提交的 `wrangler.staging.jsonc`，只替换 staging 资源 ID 和非密钥变量。
 - 不要在 `vars`、Git、日志或聊天中写 Secret。`.env*`、`.dev.vars*` 和 `wrangler.staging.jsonc` 已/应保持忽略；Secret 只通过 Cloudflare Secret 配置。
-- `workers_dev` 保持 `false`，先配置 Cloudflare Access 或等价的 custom 私有访问入口；没有私有访问策略时不要部署可访问的 staging 地址。
-- 不要为了修复 Cron 而直接打开无保护的 `workers.dev`。只有用户确认 Access 策略已创建并覆盖 Worker 后，才可讨论启用受保护入口。
+- `workers_dev` 和 `preview_urls` 均保持 `false`，先配置 Cloudflare Access 或等价的 custom 私有访问入口；没有私有访问策略时不要部署可访问的 staging 地址。
+- 账户级 workers.dev 子域虽已存在，但本 Worker 的 workers.dev route 仍关闭；不要为了测试 API 打开无保护入口。
 
 ## 1. 登录与只读确认
 
@@ -123,7 +123,7 @@ npm run build
 npx wrangler deploy --config wrangler.staging.jsonc
 ```
 
-当前部署结果：Worker 版本已经上传并处于 100% 活跃状态，但 Wrangler 在写入 Cron schedules 时报告账户需要 workers.dev 子域。不要在未完成 Access 保护前重试网络入口配置；先执行下一节的人工 Access 步骤。
+当前部署结果：Worker 版本已经上传并处于 100% 活跃状态，Wrangler 已成功写入 Cron `*/5 * * * *`。`workers_dev:false`、`preview_urls:false`、无 route/custom domain 保持不变；下一步只需由用户配置 Access 后再做 HTTP 验证。
 
 部署后在私有 staging 地址执行：
 
@@ -154,7 +154,7 @@ curl -i -X OPTIONS "$STAGING_URL/api/health" \
 3. 进入 **Zero Trust → Access controls → Applications**，确认应用目标是 `study-abroad-staging` Worker，而不是 Bookmark。
 4. 创建明确的 Allow policy：只允许指定测试邮箱或测试组，启用 MFA；不要添加 `Everyone` 或匿名 Allow。Access 应用默认拒绝未匹配用户。[Access 应用配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/non-http/self-hosted-private-app/)
 5. 如启用 `workers.dev` 入口，确认该入口显示为 Cloudflare Access 保护状态，并确认未添加 route、custom domain 或 production 域名。
-6. 用户完成控制台复核后再确认；之后才可在配置允许的前提下重新应用 Cron，并使用带 Access 的 URL 做 API 验证。Cloudflare 文档说明 `workers_dev=false` 会在后续部署时禁用该入口，因此不要在 Access 未确认前改动它。[workers.dev 配置说明](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
+6. 用户完成控制台复核后再确认；Cron 已独立配置完成，之后使用带 Access 的 URL 做 API 验证即可。Cloudflare 文档说明 `workers_dev=false` 会在后续部署时禁用该入口，因此不要在 Access 未确认前改动它。[workers.dev 配置说明](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
 
 ## 8. KV 与 Cron 验证
 
@@ -169,7 +169,7 @@ npx wrangler kv key delete --namespace-id <STAGING_KV_NAMESPACE_ID> \
   staging_smoke_test --remote
 ```
 
-本次 staging KV smoke test 已完成写入、读取和删除，删除后再次读取返回 404。确认 Worker 配置包含 `KV`、Cron `*/5 * * * *` 和 `scheduled()` handler。Cron 使用 UTC；通过 Worker 日志确认触发结果。当前云端 Cron 因 workers.dev 子域缺失尚未确认生效。没有真实数据供应商时，scheduled 同步应安全失败，不得写入 demo 作为真实同步结果。
+本次 staging KV smoke test 已完成写入、读取和删除，删除后再次读取返回 404。云端 schedules API 已返回且仅返回 Cron `*/5 * * * *`；版本详情确认包含 `KV`、Cron 配置和 `scheduled()` handler。Cron 使用 UTC。Wrangler local `--test-scheduled` 已返回 `Ran scheduled event`，并记录结构化 `study_data_sync_failed`/`ConfigurationError`；没有真实数据供应商时，scheduled 同步应安全失败，不得写入 demo 作为真实同步结果。
 
 ## 9. D1 最小读写 smoke test
 
@@ -207,6 +207,6 @@ npx wrangler rollback <PREVIOUS_WORKER_VERSION_ID> --name study-abroad-staging -
 - 通过 staging Worker Settings/配置移除 Cron，确认传播完成。
 - 关闭 staging Access policy 或暂停 Worker 路由；不要把访问模式改为 public。
 
-## 11. 当前阻塞
+## 11. 当前状态
 
-当前唯一未完成项是 Cron 和私有 HTTP 验证：Wrangler 报告账户需要 workers.dev 子域才能写入 schedules。不要绕过 Access 或修改 production；由用户先完成第 7 节的 Cloudflare Access 控制台步骤并确认保护状态，再决定是否允许重新应用 Cron。若不启用受保护入口，则保留 Worker 无网络入口，Cron/API 验证保持未完成。
+Cron、D1、KV 和 scheduled handler 的配置/安全行为验证已完成。当前唯一未完成项是私有 HTTP 验证：由用户完成第 7 节 Cloudflare Access 控制台步骤并确认保护状态后，再使用受保护 URL 验证 API；在此之前保留 Worker 无 HTTP 网络入口。

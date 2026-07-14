@@ -160,6 +160,7 @@ test("removes the temporary starter preview and keeps product metadata", async (
   assert.match(stagingConfig, /"binding": "KV"/);
   assert.match(stagingConfig, /"crons": \["\*\/5 \* \* \* \*"\]/);
   assert.match(stagingConfig, /"workers_dev": false/);
+  assert.match(stagingConfig, /"preview_urls": false/);
   assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "external"/);
   assert.match(stagingConfig, /"CACHE_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_PROVIDER": "kv"/);
