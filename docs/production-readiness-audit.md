@@ -5,6 +5,8 @@
 审计范围：当前工作区源码、数据库结构、构建配置、测试、生成的 Wrangler 配置，以及已存在的 Sites 项目配置。  
 审计方式：以当前文件和实际命令结果为准，不以历史描述或预期配置替代现场证据。
 
+本文前半部分保留第一阶段改造前的基线快照；当前分支和 staging 现场结论以“改造后复核”和“第二阶段 staging 现场结果”为准。
+
 ## 结论摘要
 
 当前项目**不具备直接公开访问条件**。它已经是一个可构建的 React/vinext + Cloudflare Worker 站点原型，但认证、真实数据同步、持久化写入、统一 API 基础设施和安全策略仍未完成。
@@ -138,9 +140,9 @@
 
 在完成真实认证、数据源适配、共享缓存、统一 API 基础能力、安全响应头、限流、环境校验和 staging 验收前，不应把 Sites 访问策略改为 `public`。即使页面本身可以构建，也不能将演示数据或演示认证流程当作正式留学服务上线。
 
-## 第一阶段改造后复核（未部署）
+## 第一、二阶段改造后复核（含 staging 云端结果）
 
-上面的分类和基线命令记录的是改造开始前的现场快照；以下是本分支已完成的代码改造。没有执行 Sites public 化、正式域名绑定、production 部署或远程 D1 迁移。
+上面的分类和基线命令记录的是第一阶段改造开始前的现场快照；以下是本分支已完成的代码改造和第二阶段 staging 现场结果。没有执行 Sites public 化、正式域名绑定或 production 部署，所有远程写入仅指向新建 staging 资源。
 
 ### 已直接完成且不依赖外部密钥的改造
 
@@ -160,7 +162,7 @@
 
 - 认证、注册、邮箱验证、密码重置仍没有真实服务端实现；`AuthProvider` 和 `EmailProvider` 是等待用户选定供应商的占位适配器，主页表单仍明确显示演示状态。
 - 当前没有真实留学数据供应商密钥，API 默认只在 development 使用 demo；staging/production 缺少 `DATA_PROVIDER_BASE_URL`/`DATA_PROVIDER_API_KEY` 会安全失败。
-- 当前 `.openai/hosting.json` 仍只有逻辑 D1 绑定 `DB`，无真实 KV namespace；生成的 Wrangler 配置仍使用本地占位 D1 ID。迁移尚未应用到远程数据库。
+- production `.openai/hosting.json` 保持不变；独立的未跟踪 `wrangler.staging.jsonc` 仅包含 staging D1/KV ID，绑定名为 `DB`/`KV`，不保存 Secret。staging 远程 D1 已按顺序应用两个 migration 并完成结构验证。
 - 监控适配器在 development 记录结构化控制台事件，非 development 未配置监控时记录告警并继续提供受保护的错误响应；需要真实监控 DSN/Token 才能完成告警闭环。
 - 生产限流优先使用 KV 适配；没有 KV 时返回 503。正式 1000 并发验收前还需要压测并评估 Durable Objects/Cloudflare Rate Limiting 的原子性和成本。
 - CSP 当前保留 `unsafe-inline` 以兼容现有 vinext 页面；正式上线前应结合构建产物进一步收敛到 nonce/hash 策略。
@@ -176,4 +178,13 @@
 
 ### 改造后验证范围
 
-当前测试覆盖首页 SSR、API envelope、demo 数据标记、缓存命中、ETag/304、健康检查、参数拒绝、同步授权失败、CORS 拒绝和安全响应头；没有覆盖真实 D1、真实 KV 多实例一致性、真实 OIDC/邮件流程、真实上游服务、Cron 云端调度、负载/并发和灾备恢复。这些属于 staging 必须补做的风险项。
+当前测试覆盖首页 SSR、API envelope、demo 数据标记、缓存命中、ETag/304、健康检查、参数拒绝、同步授权失败、CORS 拒绝、安全响应头和 staging 配置约束，共 7/7 通过；没有覆盖真实 OIDC/邮件流程、真实上游服务、Cron 云端调度、Access 后 API、负载/并发和灾备恢复。
+
+### 第二阶段 staging 现场结果
+
+- 只读核查确认目标账户的 D1、KV、Pages 清单在创建前无同名资源；`study-abroad-staging` Worker 创建前不存在。
+- 已创建独立 `study-abroad-staging-db`（绑定 `DB`）和 `study-abroad-staging-kv`（绑定 `KV`）；三张业务表行数均为 0，未接触 production 数据。
+- `0000_init.sql`、`0001_adorable_morlun.sql` 已应用，重复执行返回无待执行 migration；外键检查为空，`token_hash` 唯一约束和必要索引已验证。
+- `staging_smoke_test` 已在新 KV 中完成写入、读取、删除，删除后再次读取为 404。
+- Worker `study-abroad-staging` 已上传一个 100% 活跃版本；配置保持 `workers_dev=false`、无 route、无正式域名，因此当前没有公网 URL。
+- Cron 配置文件包含 `*/5 * * * *` 和 `scheduled()` handler，但 Cloudflare schedules API 因账户未配置 workers.dev 子域而未完成；不得在 Access 保护前启用无保护入口。
