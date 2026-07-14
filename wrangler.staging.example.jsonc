@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Standalone staging config. Deploy with --config only; do not pass an
+  // environment flag that could select an unrelated production environment.
+  "name": "study-abroad-staging",
+  "main": "./dist/server/index.js",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Keep workers.dev disabled until a private Access/custom-host policy has
+  // been verified. Replace only the two resource IDs after creation.
+  "workers_dev": false,
+  "assets": {
+    "directory": "./dist/client"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "study-abroad-staging-db",
+      "database_id": "<REPLACE_WITH_STAGING_D1_DATABASE_ID>",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "<REPLACE_WITH_STAGING_KV_NAMESPACE_ID>"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "vars": {
+    "APP_ENV": "staging",
+    "ALLOW_DEMO_DATA": "false",
+    "DATA_PROVIDER_MODE": "http",
+    "CACHE_PROVIDER": "kv",
+    "KV_NAMESPACE_BINDING": "KV",
+    "RATE_LIMIT_PROVIDER": "external",
+    "CACHE_TTL_SECONDS": "300",
+    "RATE_LIMIT_REQUESTS": "120",
+    "RATE_LIMIT_WINDOW_SECONDS": "60"
+  },
+  "secrets": {
+    "required": [
+      "AUTH_CLIENT_SECRET",
+      "SESSION_SECRET",
+      "EMAIL_PROVIDER_API_KEY",
+      "DATA_PROVIDER_API_KEY",
+      "DATA_SYNC_WEBHOOK_SECRET",
+      "TURNSTILE_SECRET_KEY",
+      "SENTRY_AUTH_TOKEN",
+      "ALERT_WEBHOOK_URL"
+    ]
+  }
+}

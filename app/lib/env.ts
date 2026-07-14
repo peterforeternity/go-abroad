@@ -29,6 +29,7 @@ export type RuntimeConfig = {
   emailReplyTo: string | null;
   monitoringDsn: string | null;
   monitoringAuthToken: string | null;
+  alertWebhookUrl: string | null;
   dataSyncWebhookSecret: string | null;
 };
 
@@ -141,7 +142,8 @@ export function getRuntimeConfig(source: EnvironmentSource = processEnvironment(
     emailFrom: emptyToNull(source.MAIL_FROM),
     emailReplyTo: emptyToNull(source.MAIL_REPLY_TO),
     monitoringDsn: emptyToNull(source.MONITORING_DSN),
-    monitoringAuthToken: emptyToNull(source.MONITORING_AUTH_TOKEN),
+    monitoringAuthToken: emptyToNull(source.MONITORING_AUTH_TOKEN ?? source.SENTRY_AUTH_TOKEN),
+    alertWebhookUrl: emptyToNull(source.ALERT_WEBHOOK_URL),
     dataSyncWebhookSecret: emptyToNull(source.DATA_SYNC_WEBHOOK_SECRET),
   };
 }

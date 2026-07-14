@@ -21,7 +21,9 @@
 | `TURNSTILE_SITE_KEY` | 配置 | 浏览器端 Bot Protection 标识 | Cloudflare Turnstile 控制台 | Variables；可公开 |
 | `TURNSTILE_SECRET_KEY` | 密钥 | 服务端校验 Turnstile | Cloudflare Turnstile 控制台 | Secret |
 | `MONITORING_DSN` | 配置/敏感配置 | Sentry 等监控事件入口 | 选定监控平台项目设置 | Variables；按平台建议保护 |
-| `MONITORING_AUTH_TOKEN` | 密钥 | 发布标记、告警或管理 API | 监控平台 API Token 页面 | Secret |
+| `SENTRY_AUTH_TOKEN` | 密钥 | Sentry 发布标记、告警或管理 API | Sentry 项目/组织 API Token 页面 | Secret |
+| `MONITORING_AUTH_TOKEN` | 兼容密钥名 | 非 Sentry 监控适配器的通用 Token | 选定监控平台 API Token 页面 | Secret |
+| `ALERT_WEBHOOK_URL` | 密钥 | 告警接收 Webhook | 选定告警系统生成 | Secret |
 | `DATA_SYNC_WEBHOOK_SECRET` | 密钥 | 受保护的人工/外部同步入口 Bearer 校验 | 用户在本地密码管理器生成 | Secret |
 
 ## Cloudflare 资源与发布凭证

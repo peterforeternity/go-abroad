@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 let worker;
 
-async function render(pathname = "/", init = {}) {
+async function render(pathname = "/", init = {}, runtimeEnv = {}) {
   if (!worker) {
     const workerUrl = new URL("../dist/server/index.js", import.meta.url);
     workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
@@ -27,6 +27,7 @@ async function render(pathname = "/", init = {}) {
         fetch: async () => new Response("Not found", { status: 404 }),
       },
       DB: undefined,
+      ...runtimeEnv,
     },
     {
       waitUntil() {},
@@ -93,6 +94,29 @@ test("exposes a safe health status and rejects invalid query parameters", async 
   assert.equal(invalidPayload.error.code, "INVALID_QUERY_PARAMETER");
 });
 
+test("keeps staging health observable while external providers are incomplete", async () => {
+  const response = await render(
+    "/api/health",
+    {},
+    {
+      APP_ENV: "staging",
+      ALLOW_DEMO_DATA: "false",
+      CACHE_PROVIDER: "kv",
+      RATE_LIMIT_PROVIDER: "external",
+      NEXT_PUBLIC_SITE_URL: "https://staging.example.test",
+      ALLOWED_ORIGINS: "https://staging.example.test",
+    },
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.environment, "staging");
+  assert.equal(payload.data.status, "degraded");
+  assert.equal(payload.data.ready, false);
+  assert.equal(payload.data.checks.demoData, false);
+  assert.ok(payload.data.issueKeys.includes("DATA_PROVIDER_BASE_URL"));
+});
+
 test("does not expose an unauthorised sync control", async () => {
   const response = await render("/api/study-abroad/sync", { method: "POST" });
   assert.equal(response.status, 503);
@@ -119,10 +143,11 @@ test("enforces the development CORS allowlist", async () => {
 test("removes the temporary starter preview and keeps product metadata", async () => {
   await assert.rejects(access(new URL("app/_sites-preview", root)));
 
-  const [page, layout, packageJson] = await Promise.all([
+  const [page, layout, packageJson, stagingConfig] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
+    readFile(new URL("wrangler.staging.example.jsonc", root), "utf8"),
   ]);
 
   assert.match(page, /STUDY_ABROAD_FALLBACK/);
@@ -130,4 +155,9 @@ test("removes the temporary starter preview and keeps product metadata", async (
   assert.match(layout, /title: "启程 · Study Abroad"/);
   assert.doesNotMatch(layout, /codex-preview|Starter Project/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+  assert.match(stagingConfig, /"name": "study-abroad-staging"/);
+  assert.match(stagingConfig, /"binding": "DB"/);
+  assert.match(stagingConfig, /"binding": "KV"/);
+  assert.match(stagingConfig, /"crons": \["\*\/5 \* \* \* \*"\]/);
+  assert.match(stagingConfig, /"workers_dev": false/);
 });

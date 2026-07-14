@@ -146,7 +146,7 @@
 
 - 增加 `.env.example`、development/staging/production 配置解析和校验；`.env.local`、`.dev.vars`、构建状态文件均被忽略。
 - 增加统一 `{ ok, data, error, meta }` API envelope、统一异常映射、`X-Request-ID`、结构化 JSON 日志和敏感字段脱敏。
-- 增加 `GET /api/health`；development 无 D1 时返回 `degraded`，staging/production 配置不完整时返回安全的 503，不泄露密钥值。
+- 增加 `GET /api/health`；作为 liveness 接口始终返回基础运行状态，配置不完整时返回 `200 + status=degraded + ready=false`，不泄露密钥值。
 - Worker 入口注入实际绑定，业务代码读取 `DB`/`KV`；没有前端 D1 访问，也没有把上游 API Key 打进客户端。
 - Worker 统一增加 CSP、HSTS（非 development HTTPS）、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、X-Frame-Options 和严格 CORS。
 - 留学数据接口增加查询参数校验、限流、ETag、缓存命中标记和 `source`、`lastSyncedAt`、`isStale`、`dataVersion`、`isDemo` 字段；demo 明确标记为 `source=demo`、`isDemo=true`、`isStale=true`，不再伪造同步时间。
@@ -169,7 +169,7 @@
 
 | 路由 | 方法 | 当前状态 |
 | --- | --- | --- |
-| `/api/health` | GET | 统一 envelope；报告配置、D1、数据源和 demo 状态；非 development 未就绪返回 503。 |
+| `/api/health` | GET | 统一 envelope；报告配置、D1、数据源和 demo 状态；外部服务缺失时保持可观测并返回 `degraded/ready=false`。 |
 | `/api/study-abroad` | GET | 参数校验、限流、内存/边缘缓存抽象、ETag、统一 envelope；development 明确返回 demo 数据。 |
 | `/api/study-abroad/sync` | POST | 服务端 Bearer 授权、限流、真实数据源同步；无授权或无供应商时安全失败。 |
 | 登录、注册、邮箱验证、密码重置 | 未实现 | 仍需外部 Auth/Email 供应商、回调、会话和业务 API。 |
