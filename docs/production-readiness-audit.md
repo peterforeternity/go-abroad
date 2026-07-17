@@ -186,5 +186,5 @@
 - 已创建独立 `study-abroad-staging-db`（绑定 `DB`）和 `study-abroad-staging-kv`（绑定 `KV`）；三张业务表行数均为 0，未接触 production 数据。
 - `0000_init.sql`、`0001_adorable_morlun.sql` 已应用，重复执行返回无待执行 migration；外键检查为空，`token_hash` 唯一约束和必要索引已验证。
 - `staging_smoke_test` 已在新 KV 中完成写入、读取、删除，删除后再次读取为 404。
-- Worker `study-abroad-staging` 已上传一个 100% 活跃版本；版本详情包含 `fetch`/`scheduled` handler、`DB`/`KV` 绑定。配置保持 `workers_dev=false`、`preview_urls=false`、无 route、无正式域名，因此当前没有公网 URL。
+- Worker `study-abroad-staging` 已上传一个 100% 活跃版本；版本详情包含 `fetch`/`scheduled` handler、`DB`/`KV` 绑定。提交的 staging 配置使用 `workers_dev=true` 以承载 Access 保护的 workers.dev 入口，保持 `preview_urls=false`、无 route、无正式域名；Access 保护状态需由控制台确认。
 - Cloudflare schedules API 已确认且仅包含 `*/5 * * * *`；Wrangler local `--test-scheduled` 返回 `Ran scheduled event`，并以 `ConfigurationError` 结构化失败，没有写入业务表。不得在 Access 保护前启用 HTTP 入口。

@@ -1,0 +1,45 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	// Access-protected staging only. Keep preview URLs disabled and do not add routes.
+	"name": "study-abroad-staging",
+	"main": "./dist/server/index.js",
+	"compatibility_date": "2026-05-15",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"workers_dev": true,
+	"preview_urls": false,
+	"assets": {
+		"directory": "./dist/client"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "study-abroad-staging-db",
+			"database_id": "f3331cce-8b02-4d58-950e-ab72879eb4d5",
+			"migrations_dir": "drizzle"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "88b7bb7796844097b439803a388e8c11"
+		}
+	],
+	"triggers": {
+		"crons": [
+			"*/5 * * * *"
+		]
+	},
+	"vars": {
+		"APP_ENV": "staging",
+		"ALLOW_DEMO_DATA": "false",
+		"DATA_PROVIDER_MODE": "external",
+		"CACHE_PROVIDER": "kv",
+		"KV_NAMESPACE_BINDING": "KV",
+		"RATE_LIMIT_PROVIDER": "kv",
+		"CACHE_TTL_SECONDS": "300",
+		"RATE_LIMIT_REQUESTS": "100",
+		"RATE_LIMIT_WINDOW_SECONDS": "60"
+  }
+}

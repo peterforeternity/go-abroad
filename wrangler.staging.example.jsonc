@@ -7,9 +7,10 @@
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
 
-  // Keep workers.dev disabled until a private Access/custom-host policy has
-  // been verified. Replace only the two resource IDs after creation.
-  "workers_dev": false,
+  // workers.dev is enabled only for the Access-protected staging entry.
+  // Keep preview URLs disabled and verify Access before testing the endpoint.
+  // Replace only the two resource IDs after creation.
+  "workers_dev": true,
   "preview_urls": false,
   "assets": {
     "directory": "./dist/client"

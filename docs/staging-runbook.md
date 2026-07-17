@@ -1,14 +1,14 @@
 # Cloudflare staging runbook
 
-本 runbook 只针对独立 staging，禁止复用或修改现有 production Sites/D1/KV/Worker。当前 staging 已创建独立 D1/KV，两个 migration 已应用，Worker 版本已上传并保持 100% 活跃，云端 schedules API 已确认唯一 Cron 为 `*/5 * * * *`；当前仍没有 HTTP 网络入口。
+本 runbook 只针对独立 staging，禁止复用或修改现有 production Sites/D1/KV/Worker。当前 staging 已创建独立 D1/KV，两个 migration 已应用，Worker 版本已上传并保持 100% 活跃，云端 schedules API 已确认唯一 Cron 为 `*/5 * * * *`；在 Access 保护状态确认前不发起 HTTP 验证。
 
 ## 0. 安全前置条件
 
 - 当前 production Sites 配置仍由 `.openai/hosting.json` 管理；不要把 staging 的 D1/KV ID 写入该文件。
-- 将 `wrangler.staging.example.jsonc` 复制为本地未提交的 `wrangler.staging.jsonc`，只替换 staging 资源 ID 和非密钥变量。
-- 不要在 `vars`、Git、日志或聊天中写 Secret。`.env*`、`.dev.vars*` 和 `wrangler.staging.jsonc` 已/应保持忽略；Secret 只通过 Cloudflare Secret 配置。
-- `workers_dev` 和 `preview_urls` 均保持 `false`，先配置 Cloudflare Access 或等价的 custom 私有访问入口；没有私有访问策略时不要部署可访问的 staging 地址。
-- 账户级 workers.dev 子域虽已存在，但本 Worker 的 workers.dev route 仍关闭；不要为了测试 API 打开无保护入口。
+- `wrangler.staging.jsonc` 是不含 Secret、可提交的 staging 部署配置；只保留 staging 资源 ID 和非密钥变量。
+- 不要在 `vars`、Git、日志或聊天中写 Secret。`.env*`、`.dev.vars*`、日志和数据库导出保持忽略；Secret 只通过 Cloudflare Secret 配置。
+- staging 配置使用 `workers_dev:true` 以承载 Cloudflare Access 保护的 workers.dev 入口，`preview_urls:false` 必须保持；Access 策略未确认前不要测试或宣称入口安全。
+- 账户级 workers.dev 子域已存在，但入口是否已被 Access 保护必须在 Cloudflare 控制台确认；不要把 `workers_dev:true` 当作访问控制。
 
 ## 1. 登录与只读确认
 
@@ -123,7 +123,7 @@ npm run build
 npx wrangler deploy --config wrangler.staging.jsonc
 ```
 
-当前部署结果：Worker 版本已经上传并处于 100% 活跃状态，Wrangler 已成功写入 Cron `*/5 * * * *`。`workers_dev:false`、`preview_urls:false`、无 route/custom domain 保持不变；下一步只需由用户配置 Access 后再做 HTTP 验证。
+当前部署结果：Worker 版本已经上传并处于 100% 活跃状态，Wrangler 已成功写入 Cron `*/5 * * * *`。staging 使用 `workers_dev:true`、`preview_urls:false`，无 route/custom domain；必须先确认 workers.dev 已由 Cloudflare Access 保护，再做 HTTP 验证。
 
 部署后在私有 staging 地址执行：
 
@@ -153,8 +153,8 @@ curl -i -X OPTIONS "$STAGING_URL/api/health" \
 2. 仅使用 **Enable Cloudflare Access** 的受保护流程；不要单独启用无保护的 `workers.dev`。Cloudflare 官方支持直接按 Worker 名称创建 Access 应用，也支持在 Worker 的 `workers.dev` 入口上启用 Access。[Cloudflare Access Worker 保护说明](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/choose-application-type/)
 3. 进入 **Zero Trust → Access controls → Applications**，确认应用目标是 `study-abroad-staging` Worker，而不是 Bookmark。
 4. 创建明确的 Allow policy：只允许指定测试邮箱或测试组，启用 MFA；不要添加 `Everyone` 或匿名 Allow。Access 应用默认拒绝未匹配用户。[Access 应用配置说明](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/non-http/self-hosted-private-app/)
-5. 如启用 `workers.dev` 入口，确认该入口显示为 Cloudflare Access 保护状态，并确认未添加 route、custom domain 或 production 域名。
-6. 用户完成控制台复核后再确认；Cron 已独立配置完成，之后使用带 Access 的 URL 做 API 验证即可。Cloudflare 文档说明 `workers_dev=false` 会在后续部署时禁用该入口，因此不要在 Access 未确认前改动它。[workers.dev 配置说明](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
+5. 确认 `workers.dev` 入口显示为 Cloudflare Access 保护状态，并确认未添加 route、custom domain 或 production 域名。
+6. 用户完成控制台复核后再确认；Cron 已独立配置完成，之后使用带 Access 的 URL 做 API 验证即可。`workers_dev:true` 只代表启用 workers.dev 入口，不代表它已受保护；Access 未确认前不得进行 HTTP 测试。[workers.dev 配置说明](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
 
 ## 8. KV 与 Cron 验证
 
@@ -209,4 +209,4 @@ npx wrangler rollback <PREVIOUS_WORKER_VERSION_ID> --name study-abroad-staging -
 
 ## 11. 当前状态
 
-Cron、D1、KV 和 scheduled handler 的配置/安全行为验证已完成。当前唯一未完成项是私有 HTTP 验证：由用户完成第 7 节 Cloudflare Access 控制台步骤并确认保护状态后，再使用受保护 URL 验证 API；在此之前保留 Worker 无 HTTP 网络入口。
+Cron、D1、KV 和 scheduled handler 的配置/安全行为验证已完成。当前唯一未完成项是私有 HTTP 验证：由用户完成第 7 节 Cloudflare Access 控制台步骤并确认保护状态后，再使用受保护 URL 验证 API；在此之前不发起 HTTP 请求，也不把 workers.dev 视为已受保护。
