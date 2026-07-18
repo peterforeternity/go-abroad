@@ -48,7 +48,7 @@ npx wrangler kv namespace create study-abroad-staging-kv --binding KV --config w
 ```env
 APP_ENV=staging
 ALLOW_DEMO_DATA=false
-DATA_PROVIDER_MODE=external
+DATA_PROVIDER_MODE=http
 CACHE_PROVIDER=kv
 KV_NAMESPACE_BINDING=KV
 RATE_LIMIT_PROVIDER=kv
@@ -56,6 +56,14 @@ CACHE_TTL_SECONDS=300
 RATE_LIMIT_REQUESTS=100
 RATE_LIMIT_WINDOW_SECONDS=60
 ```
+
+Provider 枚举必须与运行时保持一致，不能使用别名或依赖默认分支：
+
+- `DATA_PROVIDER_MODE`：`demo`（仅 development）或 `http`（staging/production 的真实 HTTP 适配器）。
+- `CACHE_PROVIDER`：`memory`（仅 development）、`cache-api` 或 `kv`；当前 staging 固定为 `kv`。
+- `RATE_LIMIT_PROVIDER`：`memory`（仅 development）或 `kv`；当前 staging 固定为 `kv`。
+
+非法值会返回 `CONFIGURATION_ERROR`；staging/production 不会回退到 demo、内存缓存或内存限流。
 
 以下变量在未获得真实外部配置前保持未设置，不得编造：`NEXT_PUBLIC_SITE_URL`、`ALLOWED_ORIGINS`、`DATA_PROVIDER_BASE_URL`、`AUTH_ISSUER_URL`、`AUTH_CLIENT_ID`、`MAIL_FROM`。如果数据、认证或邮件供应商尚未配置，对应接口必须安全失败；不得把 `ALLOW_DEMO_DATA` 改回 `true`。
 

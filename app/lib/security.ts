@@ -24,7 +24,6 @@ export function handleCorsPreflight(request: Request): Response | null {
 
 export function applySecurityHeaders(response: Response, request: Request): Response {
   const headers = new Headers(response.headers);
-  const config = getRuntimeConfig();
 
   headers.set(
     "Content-Security-Policy",
@@ -36,7 +35,7 @@ export function applySecurityHeaders(response: Response, request: Request): Resp
   headers.set("X-Frame-Options", "DENY");
   headers.set("X-Permitted-Cross-Domain-Policies", "none");
 
-  if (new URL(request.url).protocol === "https:" && config.appEnv !== "development") {
+  if (new URL(request.url).protocol === "https:") {
     headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
   }
 
@@ -53,7 +52,14 @@ export function applySecurityHeaders(response: Response, request: Request): Resp
 }
 
 function isAllowedOrigin(origin: string): boolean {
-  const config = getRuntimeConfig();
+  let config: ReturnType<typeof getRuntimeConfig>;
+  try {
+    config = getRuntimeConfig();
+  } catch {
+    // Invalid runtime configuration must fail closed without suppressing an
+    // already-structured API error response.
+    return false;
+  }
   const allowedOrigins = config.allowedOrigins.length
     ? config.allowedOrigins
     : config.appEnv === "development"

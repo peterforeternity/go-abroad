@@ -31,10 +31,14 @@
 			"*/5 * * * *"
 		]
 	},
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
 	"vars": {
 		"APP_ENV": "staging",
 		"ALLOW_DEMO_DATA": "false",
-		"DATA_PROVIDER_MODE": "external",
+		"DATA_PROVIDER_MODE": "http",
 		"CACHE_PROVIDER": "kv",
 		"KV_NAMESPACE_BINDING": "KV",
 		"RATE_LIMIT_PROVIDER": "kv",

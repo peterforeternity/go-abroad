@@ -34,6 +34,7 @@ export async function GET(request: Request): Promise<Response> {
       "Cache-Control": `public, max-age=60, s-maxage=${config.cacheTtlSeconds}, stale-while-revalidate=600`,
       "X-Data-Source": payload.meta.source,
       "X-Data-Stale": String(payload.meta.isStale),
+      "X-Cache-Status": cached ? "HIT" : "MISS",
       ...rateLimitHeaders(rateLimit),
     };
 

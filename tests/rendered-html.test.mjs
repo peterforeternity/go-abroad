@@ -5,6 +5,23 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 let worker;
 
+function createKvBinding() {
+  const values = new Map();
+  return {
+    async get(key, type) {
+      const value = values.get(key) ?? null;
+      if (value === null || type !== "json") return value;
+      return JSON.parse(value);
+    },
+    async put(key, value) {
+      values.set(key, value);
+    },
+    async delete(key) {
+      values.delete(key);
+    },
+  };
+}
+
 async function render(pathname = "/", init = {}, runtimeEnv = {}) {
   if (!worker) {
     const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -44,8 +61,9 @@ test("server-renders the Study Abroad product shell", async () => {
   const html = await response.text();
   assert.match(html, /<title>启程 · Study Abroad<\/title>/i);
   assert.match(html, /把留学这件事/);
-  assert.match(html, /实时数据探索/);
+  assert.match(html, /正在检查数据服务|数据加载中/);
   assert.match(html, /你的申请雷达/);
+  assert.doesNotMatch(html, /LIVE DATA|实时数据探索|系统正常|英国 PSW|18 个匹配机会/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -101,8 +119,9 @@ test("keeps staging health observable while external providers are incomplete", 
     {
       APP_ENV: "staging",
       ALLOW_DEMO_DATA: "false",
+      DATA_PROVIDER_MODE: "http",
       CACHE_PROVIDER: "kv",
-      RATE_LIMIT_PROVIDER: "external",
+      RATE_LIMIT_PROVIDER: "kv",
       NEXT_PUBLIC_SITE_URL: "https://staging.example.test",
       ALLOWED_ORIGINS: "https://staging.example.test",
     },
@@ -115,6 +134,49 @@ test("keeps staging health observable while external providers are incomplete", 
   assert.equal(payload.data.ready, false);
   assert.equal(payload.data.checks.demoData, false);
   assert.ok(payload.data.issueKeys.includes("DATA_PROVIDER_BASE_URL"));
+});
+
+test("staging study data fails safely without falling back to demo data", async () => {
+  const response = await render(
+    "/api/study-abroad",
+    {},
+    {
+      APP_ENV: "staging",
+      ALLOW_DEMO_DATA: "false",
+      DATA_PROVIDER_MODE: "http",
+      CACHE_PROVIDER: "kv",
+      RATE_LIMIT_PROVIDER: "kv",
+      KV: createKvBinding(),
+    },
+  );
+  assert.equal(response.status, 503);
+  const text = await response.text();
+  const payload = JSON.parse(text);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error.code, "CONFIGURATION_ERROR");
+  assert.doesNotMatch(text, /"source":"demo"|"isDemo":true|PSW|奖学金机会/);
+});
+
+test("rejects provider enum aliases instead of using implicit fallbacks", async () => {
+  for (const [key, value] of [
+    ["DATA_PROVIDER_MODE", "external"],
+    ["CACHE_PROVIDER", "external"],
+    ["RATE_LIMIT_PROVIDER", "external"],
+  ]) {
+    const runtimeEnv = {
+      APP_ENV: "staging",
+      ALLOW_DEMO_DATA: "false",
+      DATA_PROVIDER_MODE: "http",
+      CACHE_PROVIDER: "kv",
+      RATE_LIMIT_PROVIDER: "kv",
+      [key]: value,
+    };
+    const response = await render("/api/health", {}, runtimeEnv);
+    assert.equal(response.status, 503, key);
+    const payload = await response.json();
+    assert.equal(payload.error.code, "CONFIGURATION_ERROR", key);
+    assert.deepEqual(payload.error.details.missingKeys, [key]);
+  }
 });
 
 test("does not expose an unauthorised sync control", async () => {
@@ -140,17 +202,24 @@ test("enforces the development CORS allowlist", async () => {
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
 });
 
-test("removes the temporary starter preview and keeps product metadata", async () => {
+test("keeps staging UI readiness and deployment configuration aligned", async () => {
   await assert.rejects(access(new URL("app/_sites-preview", root)));
 
-  const [page, layout, packageJson, stagingConfig] = await Promise.all([
+  const [page, layout, packageJson, stagingConfig, stagingExample] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
+    readFile(new URL("wrangler.staging.jsonc", root), "utf8"),
     readFile(new URL("wrangler.staging.example.jsonc", root), "utf8"),
   ]);
 
-  assert.match(page, /STUDY_ABROAD_FALLBACK/);
+  assert.doesNotMatch(page, /STUDY_ABROAD_FALLBACK/);
+  assert.match(page, /useState<StudyAbroadPayload \| null>\(null\)/);
+  assert.match(page, /fetch\("\/api\/health"/);
+  assert.match(page, /部分服务未配置/);
+  assert.match(page, /状态未知/);
+  assert.match(page, /liveData \? "LIVE DATA" : data\?\.meta\.isDemo \? "演示数据"/);
+  assert.match(page, /setData\(null\)/);
   assert.match(page, /登录 \/ 注册/);
   assert.match(layout, /title: "启程 · Study Abroad"/);
   assert.doesNotMatch(layout, /codex-preview|Starter Project/);
@@ -158,13 +227,18 @@ test("removes the temporary starter preview and keeps product metadata", async (
   assert.match(stagingConfig, /"name": "study-abroad-staging"/);
   assert.match(stagingConfig, /"binding": "DB"/);
   assert.match(stagingConfig, /"binding": "KV"/);
-  assert.match(stagingConfig, /"crons": \["\*\/5 \* \* \* \*"\]/);
+  assert.match(stagingConfig, /"crons"\s*:\s*\[\s*"\*\/5 \* \* \* \*"\s*\]/);
   assert.match(stagingConfig, /"workers_dev": true/);
   assert.match(stagingConfig, /"preview_urls": false/);
-  assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "external"/);
+  assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "http"/);
   assert.match(stagingConfig, /"CACHE_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_REQUESTS": "100"/);
+  assert.match(stagingConfig, /"observability"\s*:\s*\{/);
+  assert.match(stagingConfig, /"enabled"\s*:\s*true/);
+  assert.match(stagingConfig, /"head_sampling_rate"\s*:\s*1/);
   assert.doesNotMatch(stagingConfig, /"routes"\s*:/);
   assert.doesNotMatch(stagingConfig, /"secrets"\s*:/);
+  assert.match(stagingExample, /"DATA_PROVIDER_MODE": "http"/);
+  assert.match(stagingExample, /"observability"\s*:\s*\{/);
 });

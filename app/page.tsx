@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  STUDY_ABROAD_FALLBACK,
   type Destination,
   type Insight,
   type InsightType,
@@ -11,6 +10,8 @@ import {
 
 type AuthMode = "login" | "signup" | "reset";
 type ModalType = "auth" | "assessment" | null;
+type StudyDataState = "loading" | "ready" | "degraded" | "unconfigured" | "error";
+type HealthState = "loading" | "ready" | "degraded" | "unknown";
 
 const TYPE_LABELS: Record<InsightType | "all", string> = {
   all: "全部",
@@ -25,23 +26,82 @@ const HERO_PILLS = ["英国", "美国", "商科", "奖学金", "申请时间线"
 type StudyDataApiBody = {
   ok?: boolean;
   data?: StudyAbroadPayload;
-  error?: { message?: string };
+  error?: { code?: string; message?: string };
+};
+
+type HealthPayload = {
+  status: "ok" | "degraded";
+  ready: boolean;
+  environment: "development" | "staging" | "production";
+  checks: {
+    configuration: boolean;
+    database: boolean;
+    studyDataProvider: boolean;
+    demoData: boolean;
+  };
+  issueKeys: string[];
+  generatedAt: string;
+};
+
+type HealthApiBody = {
+  ok?: boolean;
+  data?: HealthPayload;
 };
 
 function unwrapStudyData(body: StudyDataApiBody): StudyAbroadPayload | null {
   return body.ok === true && body.data ? body.data : null;
 }
 
-function formatSyncLabel(meta: StudyAbroadPayload["meta"]): string {
+function formatSyncLabel(meta: StudyAbroadPayload["meta"] | null): string {
+  if (!meta) return "未配置";
   if (meta.isDemo) return "开发演示";
   if (!meta.lastSyncedAt) return "未同步";
   return `${meta.lastSyncedAt.slice(11, 16)} 更新`;
 }
 
-export default function Home() {
-  const [data, setData] = useState<StudyAbroadPayload>(
-    STUDY_ABROAD_FALLBACK,
+function formatLastSynced(lastSyncedAt: string | null): string {
+  if (!lastSyncedAt) return "暂无同步时间";
+  const timestamp = new Date(lastSyncedAt);
+  if (Number.isNaN(timestamp.getTime())) return "同步时间未知";
+  return `最后同步 ${timestamp.toLocaleString("zh-CN", { hour12: false })}`;
+}
+
+function isLivePayload(data: StudyAbroadPayload | null, state: StudyDataState): boolean {
+  return Boolean(
+    data &&
+    state === "ready" &&
+    !data.meta.isDemo &&
+    !data.meta.isStale &&
+    data.meta.source &&
+    data.meta.lastSyncedAt,
   );
+}
+
+function dataStateCopy(state: StudyDataState): { title: string; description: string } {
+  if (state === "loading") {
+    return { title: "正在检查数据服务", description: "页面可继续浏览，真实数据加载完成后会自动显示。" };
+  }
+  if (state === "unconfigured") {
+    return { title: "真实数据服务尚未配置", description: "当前为受限测试环境，暂不展示院校、政策、专业或奖学金数据。" };
+  }
+  if (state === "degraded") {
+    return { title: "数据可能已过期", description: "当前展示上次成功同步的数据，请结合最后同步时间判断。" };
+  }
+  return { title: "数据状态未知", description: "数据服务暂时无法响应，请稍后重试或联系管理员。" };
+}
+
+function healthStateCopy(state: HealthState): string {
+  if (state === "ready") return "系统可用";
+  if (state === "degraded") return "部分服务未配置";
+  if (state === "loading") return "正在检查服务状态";
+  return "状态未知";
+}
+
+export default function Home() {
+  const [data, setData] = useState<StudyAbroadPayload | null>(null);
+  const [dataState, setDataState] = useState<StudyDataState>("loading");
+  const [dataMessage, setDataMessage] = useState("正在连接真实数据服务");
+  const [healthState, setHealthState] = useState<HealthState>("loading");
   const [query, setQuery] = useState("");
   const [selectedType, setSelectedType] = useState<InsightType | "all">(
     "all",
@@ -62,14 +122,71 @@ export default function Home() {
 
     fetch("/api/study-abroad", { headers: { Accept: "application/json" } })
       .then(async (response) => {
-        if (!response.ok) return null;
-        return unwrapStudyData((await response.json()) as StudyDataApiBody);
+        const body = (await response.json()) as StudyDataApiBody;
+        if (!response.ok) {
+          const unconfiguredCodes = new Set([
+            "CONFIGURATION_ERROR",
+            "DATA_PROVIDER_NOT_CONFIGURED",
+            "DEMO_PROVIDER_DISABLED",
+          ]);
+          if (!cancelled) {
+            setData(null);
+            setDataState(unconfiguredCodes.has(body.error?.code ?? "") ? "unconfigured" : "error");
+            setDataMessage(
+              unconfiguredCodes.has(body.error?.code ?? "")
+                ? "真实数据服务尚未配置"
+                : body.error?.message ?? "数据服务暂时不可用",
+            );
+          }
+          return null;
+        }
+        const nextData = unwrapStudyData(body);
+        if (!nextData) throw new Error("invalid-data-response");
+        return nextData;
       })
       .then((nextData: StudyAbroadPayload | null) => {
-        if (!cancelled && nextData) setData(nextData);
+        if (!cancelled && nextData) {
+          setData(nextData);
+          setDataState(nextData.meta.isStale ? "degraded" : "ready");
+          setDataMessage(
+            nextData.meta.isDemo
+              ? "演示数据，仅用于开发验证"
+              : nextData.meta.isStale
+                ? "数据可能已过期"
+                : "数据服务可用",
+          );
+        }
       })
       .catch(() => {
-        // The fallback keeps the first viewport useful when the API is offline.
+        if (!cancelled) {
+          setData(null);
+          setDataState("error");
+          setDataMessage("数据状态未知");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/health", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("health-request-failed");
+        const body = (await response.json()) as HealthApiBody;
+        if (body.ok !== true || !body.data) throw new Error("invalid-health-response");
+        return body.data;
+      })
+      .then((health) => {
+        if (!cancelled) {
+          setHealthState(health.ready ? "ready" : health.status === "degraded" ? "degraded" : "unknown");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHealthState("unknown");
       });
 
     return () => {
@@ -86,7 +203,7 @@ export default function Home() {
   const visibleInsights = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return data.insights.filter((item) => {
+    return (data?.insights ?? []).filter((item) => {
       const matchesType = selectedType === "all" || item.type === selectedType;
       const matchesCountry =
         selectedCountry === "全部国家" || item.country === selectedCountry;
@@ -103,7 +220,13 @@ export default function Home() {
 
       return matchesType && matchesCountry && matchesQuery;
     });
-  }, [data.insights, query, selectedCountry, selectedType]);
+  }, [data, query, selectedCountry, selectedType]);
+
+  const liveData = isLivePayload(data, dataState);
+  const dataCopy = dataStateCopy(dataState);
+  const primaryDestination = data?.destinations[0] ?? null;
+  const primaryInsight = data?.insights[0] ?? null;
+  const controlsDisabled = !data || dataState === "loading" || dataState === "unconfigured" || dataState === "error";
 
   const showToast = (message: string) => setToast(message);
 
@@ -132,6 +255,14 @@ export default function Home() {
       const nextData = unwrapStudyData((await dataResponse.json()) as StudyDataApiBody);
       if (!nextData) throw new Error("invalid-data-response");
       setData(nextData);
+      setDataState(nextData.meta.isStale ? "degraded" : "ready");
+      setDataMessage(
+        nextData.meta.isDemo
+          ? "演示数据，仅用于开发验证"
+          : nextData.meta.isStale
+            ? "数据可能已过期"
+            : "数据服务可用",
+      );
       showToast("数据已同步 · 结果已写入缓存");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "同步失败，请稍后重试");
@@ -229,7 +360,7 @@ export default function Home() {
             <em>变成一张清晰的路线图。</em>
           </h1>
           <p className="hero-description">
-            政策、院校、专业与奖学金，放进一个始终更新的空间。先了解，再比较，最后做出适合你的决定。
+            政策、院校、专业与奖学金，集中在一个清晰的空间。先确认数据状态，再比较并做出适合你的决定。
           </p>
           <div className="hero-actions">
             <button className="button-primary" onClick={() => scrollTo("explore", "探索目的地")}>
@@ -240,23 +371,19 @@ export default function Home() {
             </button>
           </div>
           <div className="hero-proof">
-            <div className="avatar-stack" aria-hidden="true">
-              <span>L</span>
-              <span>M</span>
-              <span>Y</span>
-              <span>+</span>
-            </div>
             <div>
-              <strong>12,800+</strong>
-              <span>位同学正在使用启程做规划</span>
+              <strong>STAGING</strong>
+              <span>当前为受限测试环境</span>
             </div>
           </div>
         </div>
 
         <div className="hero-visual" aria-label="留学申请路线概览">
           <div className="hero-visual-header">
-            <span>你的申请路线</span>
-            <span className="live-badge"><i /> LIVE DATA</span>
+            <span>数据服务状态</span>
+            <span className={`live-badge ${liveData ? "live" : data?.meta.isDemo ? "demo" : dataState === "degraded" ? "caution" : "restricted"}`}>
+              <i /> {liveData ? "LIVE DATA" : data?.meta.isDemo ? "演示数据" : dataState === "degraded" ? "数据可能已过期" : "受限测试环境"}
+            </span>
           </div>
           <div className="orbit-stage">
             <div className="orbit orbit-one" />
@@ -265,23 +392,29 @@ export default function Home() {
             <div className="orbit-dot dot-two" />
             <div className="orbit-dot dot-three" />
             <div className="orbit-core">
-              <span>2026</span>
-              <strong>秋季入学</strong>
-              <small>还有 214 天</small>
+              <span>{primaryDestination ? primaryDestination.flag : "STAGING"}</span>
+              <strong>{primaryDestination?.country ?? dataCopy.title}</strong>
+              <small>{primaryDestination ? `${primaryDestination.stat} 个可用项目` : "当前为受限测试环境"}</small>
             </div>
-            <div className="floating-card floating-card-top">
-              <span className="mini-icon mini-coral">✦</span>
-              <span><b>英国</b><small>PSW 工签</small></span>
-            </div>
-            <div className="floating-card floating-card-bottom">
-              <span className="mini-icon mini-sun">✹</span>
-              <span><b>奖学金</b><small>18 个匹配机会</small></span>
-            </div>
+            {primaryDestination && (
+              <div className="floating-card floating-card-top">
+                <span className="mini-icon mini-coral">✦</span>
+                <span><b>{primaryDestination.country}</b><small>{primaryDestination.tags[0] ?? "目的地信息"}</small></span>
+              </div>
+            )}
+            {primaryInsight && (
+              <div className="floating-card floating-card-bottom">
+                <span className="mini-icon mini-sun">✹</span>
+                <span><b>{TYPE_LABELS[primaryInsight.type]}</b><small>{primaryInsight.title}</small></span>
+              </div>
+            )}
           </div>
           <div className="hero-visual-footer">
-            <div><span>材料完整度</span><strong>72%</strong></div>
-            <div className="mini-progress"><i /></div>
-            <span className="hero-footer-arrow">↗</span>
+            <div>
+              <span>{data ? data.meta.source : "真实数据"}</span>
+              <strong>{data ? formatLastSynced(data.meta.lastSyncedAt) : dataMessage}</strong>
+            </div>
+            <span className="hero-footer-arrow" aria-hidden="true">↗</span>
           </div>
         </div>
       </section>
@@ -289,13 +422,15 @@ export default function Home() {
       <section className="search-panel section-container" id="explore">
         <div className="search-panel-top">
           <div>
-            <span className="section-kicker">实时数据探索</span>
+            <span className="section-kicker">
+              {liveData ? "实时数据探索" : data?.meta.isDemo ? "演示数据探索" : dataState === "degraded" ? "数据可能已过期" : dataState === "loading" ? "数据加载中" : "数据服务尚未配置"}
+            </span>
             <h2>你想先了解什么？</h2>
           </div>
-          <button className="sync-button" onClick={handleSync} disabled={syncing}>
+          <button className="sync-button" onClick={handleSync} disabled={syncing || controlsDisabled}>
             <span className={syncing ? "sync-icon spinning" : "sync-icon"}>↻</span>
             {syncing ? "同步中" : "更新数据"}
-            <small>{formatSyncLabel(data.meta)}</small>
+            <small>{formatSyncLabel(data?.meta ?? null)}</small>
           </button>
         </div>
         <div className="search-controls">
@@ -306,6 +441,7 @@ export default function Home() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索国家、院校、专业、奖学金..."
+              disabled={controlsDisabled}
             />
             <kbd>⌘ K</kbd>
           </label>
@@ -314,6 +450,7 @@ export default function Home() {
               <button
                 key={pill}
                 className="hero-pill"
+                disabled={controlsDisabled}
                 onClick={() => {
                   setQuery(pill);
                   scrollTo("insights", "申请信息");
@@ -325,11 +462,20 @@ export default function Home() {
           </div>
         </div>
         <div className="search-panel-footer">
-          <span><i className="status-dot" /> {data.meta.isDemo ? "demo · 演示数据，仅用于开发验证" : `${data.meta.source} · ${data.meta.freshness}`}</span>
-          <button onClick={() => { setQuery(""); setSelectedCountry("全部国家"); setSelectedType("all"); }}>
+          <span className={liveData ? "data-status live" : data?.meta.isDemo ? "data-status demo" : "data-status limited"}>
+            <i className="status-dot" /> {data?.meta.isDemo
+              ? "演示数据 · 仅用于开发验证"
+              : data
+                ? `${data.meta.isStale ? "数据可能已过期" : data.meta.source} · ${formatLastSynced(data.meta.lastSyncedAt)}`
+                : dataMessage}
+          </span>
+          <button disabled={controlsDisabled} onClick={() => { setQuery(""); setSelectedCountry("全部国家"); setSelectedType("all"); }}>
             清空筛选 <span>×</span>
           </button>
         </div>
+        {(!data || data.meta.isDemo || dataState === "degraded") && (
+          <DataAvailabilityNotice title={data?.meta.isDemo ? "演示数据" : dataCopy.title} description={data?.meta.isDemo ? "这些内容仅用于开发环境的界面验证，不代表实时或权威数据。" : dataCopy.description} />
+        )}
       </section>
 
       <section className="section-container destinations-section" id="destinations">
@@ -338,11 +484,12 @@ export default function Home() {
             <span className="section-kicker">01 · 目的地概览</span>
             <h2>从一个目的地开始</h2>
           </div>
-          <button className="text-link" onClick={() => { setSelectedCountry("全部国家"); scrollTo("insights", "申请信息"); }}>
+          <button className="text-link" disabled={controlsDisabled} onClick={() => { setSelectedCountry("全部国家"); scrollTo("insights", "申请信息"); }}>
             查看全部目的地 <span>↗</span>
           </button>
         </div>
-        <div className="destination-grid">
+        {data ? <>
+          <div className="destination-grid">
           {data.destinations.slice(0, 4).map((destination, index) => (
             <DestinationCard
               destination={destination}
@@ -351,8 +498,8 @@ export default function Home() {
               onSelect={chooseDestination}
             />
           ))}
-        </div>
-        <div className="destination-mini-row">
+          </div>
+          <div className="destination-mini-row">
           {data.destinations.slice(4).map((destination) => (
             <button className="destination-mini" key={destination.id} onClick={() => chooseDestination(destination)}>
               <span>{destination.flag}</span>
@@ -363,11 +510,12 @@ export default function Home() {
           ))}
           <button className="destination-mini destination-mini-all" onClick={() => scrollTo("insights", "申请信息")}>
             <span className="plus-bubble">+</span>
-            <strong>还有 40+ 个目的地</strong>
-            <small>探索全球更多可能</small>
+            <strong>查看全部目的地</strong>
+            <small>浏览当前可用数据</small>
             <span className="mini-arrow">↗</span>
           </button>
-        </div>
+          </div>
+        </> : <DataAvailabilityNotice title={dataCopy.title} description={dataCopy.description} />}
       </section>
 
       <section className="section-container insights-layout" id="insights">
@@ -377,7 +525,7 @@ export default function Home() {
               <span className="section-kicker">02 · 申请信息</span>
               <h2>把复杂问题，拆成下一步</h2>
             </div>
-            <span className="result-count">{visibleInsights.length} 条匹配</span>
+            <span className="result-count">{data ? `${visibleInsights.length} 条匹配` : "暂无数据"}</span>
           </div>
           <div className="filter-bar">
             <div className="filter-tabs" role="tablist" aria-label="信息类型">
@@ -386,6 +534,7 @@ export default function Home() {
                   className={selectedType === type ? "filter-tab active" : "filter-tab"}
                   key={type}
                   onClick={() => setSelectedType(type)}
+                  disabled={controlsDisabled}
                   role="tab"
                   aria-selected={selectedType === type}
                 >
@@ -395,16 +544,17 @@ export default function Home() {
             </div>
             <label className="country-select-wrap">
               <span>目的地</span>
-              <select value={selectedCountry} onChange={(event) => setSelectedCountry(event.target.value)}>
+              <select disabled={controlsDisabled} value={selectedCountry} onChange={(event) => setSelectedCountry(event.target.value)}>
                 <option>全部国家</option>
-                {data.destinations.map((destination) => <option key={destination.id}>{destination.country}</option>)}
-                <option>欧洲</option>
+                {(data?.destinations ?? []).map((destination) => <option key={destination.id}>{destination.country}</option>)}
               </select>
               <span className="select-chevron">⌄</span>
             </label>
           </div>
           <div className="insight-list">
-            {visibleInsights.length ? visibleInsights.map((insight, index) => (
+            {!data ? (
+              <DataAvailabilityNotice title={dataCopy.title} description={dataCopy.description} />
+            ) : visibleInsights.length ? visibleInsights.map((insight, index) => (
               <InsightCard
                 insight={insight}
                 index={index}
@@ -479,7 +629,10 @@ export default function Home() {
           <div><span>工具</span><button onClick={openAssessment}>快速评估</button><button onClick={() => openAuth("signup")}>我的清单</button></div>
           <div><span>关于</span><button onClick={() => showToast("我们会在下一个版本开放顾问预约")}>顾问服务</button><button onClick={() => showToast("帮助中心正在整理中")}>帮助中心</button></div>
         </div>
-        <div className="footer-bottom"><span>© 2026 启程 · Study Abroad</span><span>数据同步中 · <i className="status-dot" /> 系统正常</span></div>
+        <div className="footer-bottom">
+          <span>© 2026 启程 · Study Abroad</span>
+          <span className={`service-status ${healthState}`}><i className="status-dot" /> 服务状态 · {healthStateCopy(healthState)}</span>
+        </div>
       </footer>
 
       {selectedInsight && (
@@ -529,6 +682,18 @@ export default function Home() {
 
       {toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}
     </main>
+  );
+}
+
+function DataAvailabilityNotice({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="data-state-card" role="status">
+      <span aria-hidden="true">i</span>
+      <div>
+        <strong>{title}</strong>
+        <p>{description}</p>
+      </div>
+    </div>
   );
 }
 

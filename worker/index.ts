@@ -73,8 +73,12 @@ const worker = {
       runStudyDataSync()
         .then((result) => logInfo("study_data_sync_completed", { cron: controller.cron, ...result }))
         .catch((error) => {
+          const code = typeof (error as { code?: unknown })?.code === "string"
+            ? (error as { code: string }).code
+            : "UNKNOWN_ERROR";
           logError("study_data_sync_failed", {
             cron: controller.cron,
+            code,
             errorName: error instanceof Error ? error.name : "UnknownError",
           });
         }),

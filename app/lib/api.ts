@@ -115,12 +115,15 @@ export async function withApiHandler(
 
   try {
     const response = await handler({ request, requestId });
+    const cacheStatus = response.headers.get("X-Cache-Status");
     logInfo("api_request", {
       requestId,
       method: request.method,
+      route: url.pathname,
       pathname: url.pathname,
       status: response.status,
       durationMs: Date.now() - startedAt,
+      ...(cacheStatus ? { cacheStatus } : {}),
     });
     const headers = new Headers(response.headers);
     headers.set("X-Request-ID", requestId);
@@ -134,6 +137,7 @@ export async function withApiHandler(
     logError("api_error", {
       requestId,
       method: request.method,
+      route: url.pathname,
       pathname: url.pathname,
       status: apiError.status,
       code: apiError.code,

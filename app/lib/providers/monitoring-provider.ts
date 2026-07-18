@@ -26,7 +26,11 @@ class UnavailableMonitoringProvider implements MonitoringProvider {
 }
 
 export function getMonitoringProvider(): MonitoringProvider {
-  return getRuntimeConfig().appEnv === "development"
-    ? new ConsoleMonitoringProvider()
-    : new UnavailableMonitoringProvider();
+  try {
+    return getRuntimeConfig().appEnv === "development"
+      ? new ConsoleMonitoringProvider()
+      : new UnavailableMonitoringProvider();
+  } catch {
+    return new UnavailableMonitoringProvider();
+  }
 }

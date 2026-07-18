@@ -1,7 +1,11 @@
 export type AppEnvironment = "development" | "staging" | "production";
-export type DataProviderMode = "demo" | "http";
-export type CacheProviderMode = "memory" | "cache-api" | "kv";
-export type RateLimitProviderMode = "memory" | "external";
+export const DATA_PROVIDER_MODES = ["demo", "http"] as const;
+export const CACHE_PROVIDER_MODES = ["memory", "cache-api", "kv"] as const;
+export const RATE_LIMIT_PROVIDER_MODES = ["memory", "kv"] as const;
+
+export type DataProviderMode = (typeof DATA_PROVIDER_MODES)[number];
+export type CacheProviderMode = (typeof CACHE_PROVIDER_MODES)[number];
+export type RateLimitProviderMode = (typeof RATE_LIMIT_PROVIDER_MODES)[number];
 
 export type RuntimeConfig = {
   appEnv: AppEnvironment;
@@ -74,9 +78,12 @@ function emptyToNull(value: string | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+function parseBoolean(value: string | undefined, fallback: boolean, key: string): boolean {
   if (value === undefined || value.trim() === "") return fallback;
-  return value.trim().toLowerCase() === "true";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  throw new ConfigurationError(`${key} must be true or false`, [key]);
 }
 
 function parseInteger(value: string | undefined, fallback: number): number {
@@ -93,25 +100,65 @@ function parseList(value: string | undefined): string[] {
 }
 
 function parseEnvironment(value: string | undefined): AppEnvironment {
-  const fallback = value === "production" ? "production" : "development";
-  if (value === "development" || value === "staging" || value === "production") {
-    return value;
+  if (!value?.trim()) return "development";
+  const normalized = value.trim();
+  if (normalized === "development" || normalized === "staging" || normalized === "production") {
+    return normalized;
   }
-  return fallback;
+  throw new ConfigurationError(
+    "APP_ENV must be development, staging, or production",
+    ["APP_ENV"],
+  );
 }
 
 function parseDataProviderMode(value: string | undefined, appEnv: AppEnvironment): DataProviderMode {
-  if (value === "http") return "http";
-  return appEnv === "development" ? "demo" : "http";
+  if (!value?.trim()) {
+    if (appEnv === "development") return "demo";
+    throw new ConfigurationError(
+      "DATA_PROVIDER_MODE is required outside development",
+      ["DATA_PROVIDER_MODE"],
+    );
+  }
+  const normalized = value.trim();
+  if (DATA_PROVIDER_MODES.includes(normalized as DataProviderMode)) return normalized as DataProviderMode;
+  throw new ConfigurationError(
+    `DATA_PROVIDER_MODE must be one of: ${DATA_PROVIDER_MODES.join(", ")}`,
+    ["DATA_PROVIDER_MODE"],
+  );
 }
 
 function parseCacheProvider(value: string | undefined, appEnv: AppEnvironment): CacheProviderMode {
-  if (value === "cache-api" || value === "kv") return value;
-  return appEnv === "development" ? "memory" : "cache-api";
+  if (!value?.trim()) {
+    if (appEnv === "development") return "memory";
+    throw new ConfigurationError(
+      "CACHE_PROVIDER is required outside development",
+      ["CACHE_PROVIDER"],
+    );
+  }
+  const normalized = value.trim();
+  if (CACHE_PROVIDER_MODES.includes(normalized as CacheProviderMode)) return normalized as CacheProviderMode;
+  throw new ConfigurationError(
+    `CACHE_PROVIDER must be one of: ${CACHE_PROVIDER_MODES.join(", ")}`,
+    ["CACHE_PROVIDER"],
+  );
 }
 
 function parseRateLimitProvider(value: string | undefined, appEnv: AppEnvironment): RateLimitProviderMode {
-  return value === "external" || appEnv !== "development" ? "external" : "memory";
+  if (!value?.trim()) {
+    if (appEnv === "development") return "memory";
+    throw new ConfigurationError(
+      "RATE_LIMIT_PROVIDER is required outside development",
+      ["RATE_LIMIT_PROVIDER"],
+    );
+  }
+  const normalized = value.trim();
+  if (RATE_LIMIT_PROVIDER_MODES.includes(normalized as RateLimitProviderMode)) {
+    return normalized as RateLimitProviderMode;
+  }
+  throw new ConfigurationError(
+    `RATE_LIMIT_PROVIDER must be one of: ${RATE_LIMIT_PROVIDER_MODES.join(", ")}`,
+    ["RATE_LIMIT_PROVIDER"],
+  );
 }
 
 export function getRuntimeConfig(source: EnvironmentSource = processEnvironment()): RuntimeConfig {
@@ -127,7 +174,11 @@ export function getRuntimeConfig(source: EnvironmentSource = processEnvironment(
     dataProviderEndpoint: source.DATA_PROVIDER_ENDPOINT?.trim() || "/study-abroad",
     dataProviderTimeoutMs: Math.min(Math.max(parseInteger(source.DATA_PROVIDER_TIMEOUT_MS, 5000), 500), 15000),
     dataProviderRetryCount: Math.min(Math.max(parseInteger(source.DATA_PROVIDER_RETRY_COUNT, 2), 0), 3),
-    allowDemoData: parseBoolean(source.ALLOW_DEMO_DATA, appEnv === "development"),
+    allowDemoData: parseBoolean(
+      source.ALLOW_DEMO_DATA,
+      appEnv === "development",
+      "ALLOW_DEMO_DATA",
+    ),
     cacheProvider: parseCacheProvider(source.CACHE_PROVIDER, appEnv),
     cacheTtlSeconds: Math.min(Math.max(parseInteger(source.CACHE_TTL_SECONDS, 300), 30), 900),
     kvNamespaceBinding: emptyToNull(source.KV_NAMESPACE_BINDING),
@@ -155,11 +206,6 @@ export function validateRuntimeEnv(
   const issues: ConfigIssue[] = [];
   const add = (key: string, message: string) => issues.push({ key, message });
 
-  const rawEnvironment = source.APP_ENV ?? source.NODE_ENV;
-  if (rawEnvironment && !["development", "staging", "production"].includes(rawEnvironment)) {
-    add("APP_ENV", "must be development, staging, or production");
-  }
-
   if (config.appEnv !== "development") {
     if (!config.siteUrl || !config.siteUrl.startsWith("https://")) {
       add("NEXT_PUBLIC_SITE_URL", "must be an https URL outside development");
@@ -173,7 +219,7 @@ export function validateRuntimeEnv(
     if (!config.dataProviderBaseUrl) add("DATA_PROVIDER_BASE_URL", "is required for the HTTP provider");
     if (!config.dataProviderApiKey) add("DATA_PROVIDER_API_KEY", "is required for the HTTP provider");
     if (config.cacheProvider === "memory") add("CACHE_PROVIDER", "memory cache is development-only");
-    if (config.rateLimitProvider === "memory") add("RATE_LIMIT_PROVIDER", "memory rate limiting is development-only");
+    if (config.rateLimitProvider !== "kv") add("RATE_LIMIT_PROVIDER", "kv is required outside development");
     if (!config.authIssuerUrl) add("AUTH_ISSUER_URL", "is required before enabling public authentication");
     if (!config.authClientId) add("AUTH_CLIENT_ID", "is required before enabling public authentication");
     if (!config.authClientSecret) add("AUTH_CLIENT_SECRET", "is required before enabling public authentication");
