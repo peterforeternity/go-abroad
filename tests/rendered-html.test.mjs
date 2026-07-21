@@ -280,8 +280,8 @@ test("aggregates traceable public APIs without demo or ranking claims", async ()
     insights: [],
   }));
   const crawlTime = new Date().toISOString();
-  await kv.put("study-crawler:curated:v1", JSON.stringify({
-    version: 1,
+  await kv.put("study-crawler:curated:v2", JSON.stringify({
+    version: 2,
     lastAttemptAt: crawlTime,
     lastSuccessAt: crawlTime,
     errors: [],
@@ -579,7 +579,7 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "public-apis"/);
   assert.match(stagingConfig, /"CRAWLER_ENABLED": "true"/);
   assert.match(stagingConfig, /"CRAWLER_INTERVAL_SECONDS": "21600"/);
-  assert.match(stagingConfig, /"CRAWLER_MAX_PAGES": "8"/);
+  assert.match(stagingConfig, /"CRAWLER_MAX_PAGES": "16"/);
   assert.match(stagingConfig, /"CRAWLER_MAX_BYTES": "1048576"/);
   assert.match(stagingConfig, /"CACHE_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_PROVIDER": "kv"/);
@@ -605,5 +605,17 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(crawlerSource, /redirect: "manual"/);
   assert.match(crawlerSource, /HOST_NOT_ALLOWLISTED/);
   assert.match(crawlerSource, /PAGE_TOO_LARGE/);
+  assert.match(crawlerSource, /study-crawler:curated:v2/);
+  for (const officialHost of [
+    "facts.mit.edu",
+    "gradadmissions.stanford.edu",
+    "www.harvard.edu",
+    "grad.berkeley.edu",
+    "admission.princeton.edu",
+    "www.yale.edu",
+  ]) {
+    assert.match(crawlerSource, new RegExp(officialHost.replaceAll(".", "\\.")));
+  }
+  assert.doesNotMatch(crawlerSource, /topuniversities\.com|usnews\.com/);
   assert.doesNotMatch(crawlerSource, /Cookie|Authorization/);
 });

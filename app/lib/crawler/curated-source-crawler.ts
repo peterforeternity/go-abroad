@@ -3,7 +3,7 @@ import { logInfo, logWarn } from "../logger";
 import type { Insight, InsightType } from "../study-abroad-data";
 import { getCacheProvider } from "../providers/cache-provider";
 
-export const CURATED_CRAWL_CACHE_KEY = "study-crawler:curated:v1";
+export const CURATED_CRAWL_CACHE_KEY = "study-crawler:curated:v2";
 const CRAWLER_USER_AGENT = "QichengStudyBot/1.0 (+https://study-abroad-staging.qicheng-study.workers.dev/)";
 const RETENTION_SECONDS = 60 * 60 * 24 * 7;
 const ALLOWED_HOSTS = new Set<string>();
@@ -82,6 +82,60 @@ const SEEDS: readonly CrawlSeed[] = [
     accent: "lavender",
     tags: ["Student's Pass", "签证", "ICA"],
   },
+  {
+    id: "mit-graduate-admissions",
+    url: "https://facts.mit.edu/graduate-student-admission/",
+    label: "MIT Institutional Research",
+    country: "美国",
+    type: "university",
+    accent: "ink",
+    tags: ["MIT", "研究生申请", "院校官网"],
+  },
+  {
+    id: "stanford-graduate-admissions",
+    url: "https://gradadmissions.stanford.edu/apply",
+    label: "Stanford Graduate Admissions",
+    country: "美国",
+    type: "university",
+    accent: "ink",
+    tags: ["Stanford", "研究生申请", "院校官网"],
+  },
+  {
+    id: "harvard-admissions",
+    url: "https://www.harvard.edu/admissions-aid/",
+    label: "Harvard University",
+    country: "美国",
+    type: "university",
+    accent: "ink",
+    tags: ["Harvard", "申请与资助", "院校官网"],
+  },
+  {
+    id: "berkeley-graduate-admissions",
+    url: "https://grad.berkeley.edu/admissions/",
+    label: "UC Berkeley Graduate Division",
+    country: "美国",
+    type: "university",
+    accent: "ink",
+    tags: ["UC Berkeley", "研究生申请", "院校官网"],
+  },
+  {
+    id: "princeton-graduate-admissions",
+    url: "https://admission.princeton.edu/apply",
+    label: "Princeton Admission",
+    country: "美国",
+    type: "university",
+    accent: "ink",
+    tags: ["Princeton", "本科申请", "院校官网"],
+  },
+  {
+    id: "yale-admissions",
+    url: "https://www.yale.edu/admissions",
+    label: "Yale University",
+    country: "美国",
+    type: "university",
+    accent: "ink",
+    tags: ["Yale", "申请与资助", "院校官网"],
+  },
 ] as const;
 
 for (const seed of SEEDS) ALLOWED_HOSTS.add(new URL(seed.url).hostname);
@@ -102,7 +156,7 @@ export type CrawledPage = {
 };
 
 export type CrawlSnapshot = {
-  version: 1;
+  version: 2;
   lastAttemptAt: string;
   lastSuccessAt: string | null;
   pages: CrawledPage[];
@@ -148,7 +202,7 @@ export async function refreshCuratedSources(config: RuntimeConfig): Promise<Craw
   }
 
   const snapshot: CrawlSnapshot = {
-    version: 1,
+    version: 2,
     lastAttemptAt: new Date(now).toISOString(),
     lastSuccessAt: successes > 0 ? new Date(now).toISOString() : existing?.lastSuccessAt ?? null,
     pages: [...pages.values()],
