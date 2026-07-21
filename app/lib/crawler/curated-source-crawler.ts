@@ -3,9 +3,11 @@ import { logInfo, logWarn } from "../logger";
 import type { Insight, InsightType } from "../study-abroad-data";
 import { getCacheProvider } from "../providers/cache-provider";
 
-export const CURATED_CRAWL_CACHE_KEY = "study-crawler:curated:v2";
+export const CURATED_CRAWL_CACHE_KEY = "study-crawler:curated:v3";
+export const CURATED_UNIVERSITY_SOURCE_COUNT = 50;
 const CRAWLER_USER_AGENT = "QichengStudyBot/1.0 (+https://study-abroad-staging.qicheng-study.workers.dev/)";
 const RETENTION_SECONDS = 60 * 60 * 24 * 7;
+const CRAWL_CONCURRENCY = 4;
 const ALLOWED_HOSTS = new Set<string>();
 
 type CrawlSeed = {
@@ -17,6 +19,61 @@ type CrawlSeed = {
   accent: string;
   tags: string[];
 };
+
+const ADDITIONAL_UNIVERSITY_PAGES = [
+  ["caltech", "https://www.caltech.edu/admissions", "California Institute of Technology", "美国", "ink"],
+  ["columbia", "https://www.columbia.edu/content/admissions", "Columbia University", "美国", "ink"],
+  ["uchicago", "https://grad.uchicago.edu/admissions/", "University of Chicago", "美国", "ink"],
+  ["upenn", "https://www.upenn.edu/admissions", "University of Pennsylvania", "美国", "ink"],
+  ["cornell", "https://gradschool.cornell.edu/admissions/", "Cornell University", "美国", "ink"],
+  ["johns-hopkins", "https://grad.jhu.edu/admissions/", "Johns Hopkins University", "美国", "ink"],
+  ["northwestern", "https://www.tgs.northwestern.edu/admission/", "Northwestern University", "美国", "ink"],
+  ["duke", "https://gradschool.duke.edu/admissions/", "Duke University", "美国", "ink"],
+  ["michigan", "https://rackham.umich.edu/admissions/", "University of Michigan", "美国", "ink"],
+  ["ucla", "https://grad.ucla.edu/admissions/", "University of California, Los Angeles", "美国", "ink"],
+  ["ucsd", "https://grad.ucsd.edu/admissions/", "University of California San Diego", "美国", "ink"],
+  ["nyu", "https://www.nyu.edu/admissions.html", "New York University", "美国", "ink"],
+  ["carnegie-mellon", "https://www.cmu.edu/graduate/admissions/index.html", "Carnegie Mellon University", "美国", "ink"],
+  ["brown", "https://graduateschool.brown.edu/admission", "Brown University", "美国", "ink"],
+  ["washington", "https://grad.uw.edu/admission/", "University of Washington", "美国", "ink"],
+  ["edinburgh", "https://www.ed.ac.uk/studying/postgraduate/applying", "University of Edinburgh", "英国", "coral"],
+  ["manchester", "https://www.manchester.ac.uk/study/masters/admissions/", "University of Manchester", "英国", "coral"],
+  ["kings-college-london", "https://www.kcl.ac.uk/study/postgraduate-taught/how-to-apply", "King's College London", "英国", "coral"],
+  ["lse", "https://www.lse.ac.uk/study-at-lse/Graduate/Prospective-students/How-to-Apply", "London School of Economics", "英国", "coral"],
+  ["bristol", "https://www.bristol.ac.uk/study/postgraduate/apply/", "University of Bristol", "英国", "coral"],
+  ["warwick", "https://warwick.ac.uk/study/postgraduate/apply/", "University of Warwick", "英国", "coral"],
+  ["toronto", "https://www.sgs.utoronto.ca/admissions/", "University of Toronto", "加拿大", "sage"],
+  ["ubc", "https://www.grad.ubc.ca/prospective-students/application-admission", "University of British Columbia", "加拿大", "sage"],
+  ["mcgill", "https://www.mcgill.ca/gradapplicants/how-apply", "McGill University", "加拿大", "sage"],
+  ["waterloo", "https://uwaterloo.ca/graduate-studies-postdoctoral-affairs/future-students/applying-graduate-school", "University of Waterloo", "加拿大", "sage"],
+  ["alberta", "https://www.ualberta.ca/en/graduate-studies/prospective-students/apply-for-admission/index.html", "University of Alberta", "加拿大", "sage"],
+  ["melbourne", "https://study.unimelb.edu.au/how-to-apply/graduate-study", "University of Melbourne", "澳大利亚", "sun"],
+  ["sydney", "https://www.sydney.edu.au/study/applying/how-to-apply/postgraduate.html", "University of Sydney", "澳大利亚", "sun"],
+  ["unsw", "https://www.unsw.edu.au/study/how-to-apply/postgraduate", "UNSW Sydney", "澳大利亚", "sun"],
+  ["anu", "https://study.anu.edu.au/apply/postgraduate", "Australian National University", "澳大利亚", "sun"],
+  ["monash", "https://www.monash.edu/study/how-to-apply/graduate-coursework", "Monash University", "澳大利亚", "sun"],
+  ["queensland", "https://study.uq.edu.au/admissions/postgraduate-coursework", "University of Queensland", "澳大利亚", "sun"],
+  ["nus", "https://nus.edu.sg/registrar/academic-information-policies/graduate/graduate-admissions", "National University of Singapore", "新加坡", "lavender"],
+  ["ntu-singapore", "https://www.ntu.edu.sg/admissions/graduate", "Nanyang Technological University", "新加坡", "lavender"],
+  ["hku", "https://gradsch.hku.hk/prospective_students/application/how_to_apply", "University of Hong Kong", "中国香港", "lavender"],
+  ["cuhk", "https://www.gs.cuhk.edu.hk/admissions/", "Chinese University of Hong Kong", "中国香港", "lavender"],
+  ["hkust", "https://fytgs.hkust.edu.hk/admissions/Admission-to-Postgraduate-Studies", "Hong Kong University of Science and Technology", "中国香港", "lavender"],
+  ["tokyo", "https://www.u-tokyo.ac.jp/en/prospective-students/graduate_course_students.html", "University of Tokyo", "日本", "blue"],
+  ["kyoto", "https://www.kyoto-u.ac.jp/en/education-campus/education-and-admissions/graduate-degree-programs", "Kyoto University", "日本", "blue"],
+  ["kaist", "https://admission.kaist.ac.kr/intl-graduate/", "KAIST", "韩国", "blue"],
+] as const;
+
+const ADDITIONAL_UNIVERSITY_SEEDS: readonly CrawlSeed[] = ADDITIONAL_UNIVERSITY_PAGES.map(
+  ([id, url, label, country, accent]) => ({
+    id: `${id}-admissions`,
+    url,
+    label,
+    country,
+    type: "university",
+    accent,
+    tags: [label, "申请信息", "院校官网"],
+  }),
+);
 
 const SEEDS: readonly CrawlSeed[] = [
   {
@@ -172,6 +229,7 @@ const SEEDS: readonly CrawlSeed[] = [
     accent: "coral",
     tags: ["UCL", "研究生申请", "院校官网"],
   },
+  ...ADDITIONAL_UNIVERSITY_SEEDS,
 ] as const;
 
 for (const seed of SEEDS) ALLOWED_HOSTS.add(new URL(seed.url).hostname);
@@ -217,23 +275,18 @@ export async function refreshCuratedSources(config: RuntimeConfig): Promise<Craw
   const errors: CrawlSnapshot["errors"] = [];
   const robotsCache = new Map<string, Promise<{ allowed: boolean; code: string }>>();
   let successes = 0;
-  for (const seed of SEEDS.slice(0, config.crawlerMaxPages)) {
-    try {
-      const origin = new URL(seed.url).origin;
-      const permissionPromise = robotsCache.get(origin) ?? robotsPermission(seed.url, config);
-      robotsCache.set(origin, permissionPromise);
-      const permission = await permissionPromise;
-      if (!permission.allowed) {
-        pages.delete(seed.id);
-        errors.push({ sourceId: seed.id, code: permission.code });
-        continue;
+  const selectedSeeds = SEEDS.slice(0, config.crawlerMaxPages);
+  for (let offset = 0; offset < selectedSeeds.length; offset += CRAWL_CONCURRENCY) {
+    const batch = selectedSeeds.slice(offset, offset + CRAWL_CONCURRENCY);
+    const results = await Promise.all(batch.map(async (seed) => crawlSeed(seed, config, robotsCache)));
+    for (const result of results) {
+      if (result.page) {
+        pages.set(result.seed.id, result.page);
+        successes += 1;
+      } else {
+        if (result.removeRetained) pages.delete(result.seed.id);
+        errors.push({ sourceId: result.seed.id, code: result.code });
       }
-      const html = await fetchHtml(seed.url, config);
-      const extracted = extractPage(seed, html, new Date(now).toISOString());
-      pages.set(seed.id, extracted);
-      successes += 1;
-    } catch (error) {
-      errors.push({ sourceId: seed.id, code: publicCrawlerErrorCode(error) });
     }
   }
 
@@ -252,6 +305,31 @@ export async function refreshCuratedSources(config: RuntimeConfig): Promise<Craw
     failed: errors.length,
   });
   return snapshot;
+}
+
+async function crawlSeed(
+  seed: CrawlSeed,
+  config: RuntimeConfig,
+  robotsCache: Map<string, Promise<{ allowed: boolean; code: string }>>,
+): Promise<{ seed: CrawlSeed; page: CrawledPage | null; code: string; removeRetained: boolean }> {
+  try {
+    const origin = new URL(seed.url).origin;
+    const permissionPromise = robotsCache.get(origin) ?? robotsPermission(seed.url, config);
+    robotsCache.set(origin, permissionPromise);
+    const permission = await permissionPromise;
+    if (!permission.allowed) {
+      return { seed, page: null, code: permission.code, removeRetained: true };
+    }
+    const html = await fetchHtml(seed.url, config);
+    return {
+      seed,
+      page: await extractPage(seed, html, new Date().toISOString()),
+      code: "OK",
+      removeRetained: false,
+    };
+  } catch (error) {
+    return { seed, page: null, code: publicCrawlerErrorCode(error), removeRetained: false };
+  }
 }
 
 export function crawledPagesToInsights(snapshot: CrawlSnapshot | null): Insight[] {

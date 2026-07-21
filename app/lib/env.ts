@@ -205,7 +205,7 @@ export function getRuntimeConfig(source: EnvironmentSource = processEnvironment(
       Math.max(parseInteger(source.CRAWLER_INTERVAL_SECONDS, 21600), 3600),
       604800,
     ),
-    crawlerMaxPages: Math.min(Math.max(parseInteger(source.CRAWLER_MAX_PAGES, 8), 1), 20),
+    crawlerMaxPages: Math.min(Math.max(parseInteger(source.CRAWLER_MAX_PAGES, 8), 1), 60),
     crawlerMaxBytes: Math.min(Math.max(parseInteger(source.CRAWLER_MAX_BYTES, 1048576), 65536), 2097152),
     allowDemoData: parseBoolean(
       source.ALLOW_DEMO_DATA,

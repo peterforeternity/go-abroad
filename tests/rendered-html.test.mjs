@@ -280,7 +280,7 @@ test("aggregates traceable public APIs without demo or ranking claims", async ()
     insights: [],
   }));
   const crawlTime = new Date().toISOString();
-  await kv.put("study-crawler:curated:v2", JSON.stringify({
+  await kv.put("study-crawler:curated:v3", JSON.stringify({
     version: 2,
     lastAttemptAt: crawlTime,
     lastSuccessAt: crawlTime,
@@ -656,7 +656,7 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "public-apis"/);
   assert.match(stagingConfig, /"CRAWLER_ENABLED": "true"/);
   assert.match(stagingConfig, /"CRAWLER_INTERVAL_SECONDS": "21600"/);
-  assert.match(stagingConfig, /"CRAWLER_MAX_PAGES": "20"/);
+  assert.match(stagingConfig, /"CRAWLER_MAX_PAGES": "57"/);
   assert.match(stagingConfig, /"CRAWLER_MAX_BYTES": "1048576"/);
   assert.match(stagingConfig, /"CACHE_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_PROVIDER": "kv"/);
@@ -688,7 +688,9 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(crawlerSource, /redirect: "manual"/);
   assert.match(crawlerSource, /HOST_NOT_ALLOWLISTED/);
   assert.match(crawlerSource, /PAGE_TOO_LARGE/);
-  assert.match(crawlerSource, /study-crawler:curated:v2/);
+  assert.match(crawlerSource, /study-crawler:curated:v3/);
+  assert.match(crawlerSource, /CURATED_UNIVERSITY_SOURCE_COUNT = 50/);
+  assert.match(crawlerSource, /CRAWL_CONCURRENCY = 4/);
   for (const officialHost of [
     "facts.mit.edu",
     "gradadmissions.stanford.edu",
