@@ -51,7 +51,7 @@ Changing the allowlist requires code review and a new deployment. Arbitrary user
 
 The crawler does not scrape or reproduce QS World University Rankings or U.S. News ranking tables. Those are third-party editorial datasets, not university-owned admissions data. In particular, QS requires express written permission for automated crawling and commercial reuse. A university's presence in this curated list does not represent a rank, score, endorsement, or completeness claim.
 
-The current open substitute is OpenAlex, whose research-output counts are explicitly labelled as non-ranking statistics. The U.S. Department of Education College Scorecard API is also suitable for official institution, cost, completion, admissions, and program facts, but it requires a separately issued `api.data.gov` key. If licensed QS data is later purchased, it must enter through a contracted provider/API and preserve the ranking edition, methodology, attribution, license scope, and source URL; it must never be populated by this crawler.
+The current open substitutes are OpenAlex, whose research-output counts are explicitly labelled as non-ranking statistics, and the U.S. Department of Education College Scorecard API for official institution, cost, admissions, and program facts. College Scorecard requires a separately issued `api.data.gov` key stored only as the Cloudflare Secret `COLLEGE_SCORECARD_API_KEY`. If licensed QS data is later purchased, it must enter through a contracted provider/API and preserve the ranking edition, methodology, attribution, license scope, and source URL; it must never be populated by this crawler.
 
 ## Open-source crawler evaluation
 

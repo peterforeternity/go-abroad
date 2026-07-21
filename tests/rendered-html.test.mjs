@@ -331,6 +331,19 @@ test("aggregates traceable public APIs without demo or ranking claims", async ()
         type: "Notice",
       }] });
     }
+    if (url.hostname === "api.data.gov") {
+      assert.equal(url.searchParams.get("api_key"), "scorecard-test-key");
+      return Response.json({ results: [{
+        id: 166683,
+        "school.name": "Massachusetts Institute of Technology",
+        "school.city": "Cambridge",
+        "school.state": "MA",
+        "school.school_url": "web.mit.edu",
+        "latest.student.size": 4600,
+        "latest.admissions.admission_rate.overall": 0.041,
+        "latest.cost.tuition.out_of_state": 60156,
+      }] });
+    }
     throw new Error(`Unexpected public API: ${url.hostname}`);
   };
 
@@ -343,20 +356,25 @@ test("aggregates traceable public APIs without demo or ranking claims", async ()
       RATE_LIMIT_PROVIDER: "kv",
       AUTH_PROVIDER_MODE: "d1",
       EMAIL_PROVIDER_MODE: "resend",
+      COLLEGE_SCORECARD_API_KEY: "scorecard-test-key",
       KV: kv,
     });
     assert.equal(response.status, 200);
     const payload = await response.json();
     assert.equal(payload.data.meta.isDemo, false);
     assert.equal(payload.data.meta.isStale, false);
-    assert.equal(payload.data.meta.source, "openalex+govuk+federal-register+official-pages");
+    assert.equal(payload.data.meta.source, "openalex+govuk+federal-register+college-scorecard+official-pages");
     assert.notEqual(payload.data.meta.dataVersion, "old-demo");
-    assert.equal(payload.data.meta.sources.length, 4);
+    assert.equal(payload.data.meta.sources.length, 5);
+    assert.equal(payload.data.meta.sources[3].id, "college-scorecard");
     assert.equal(payload.data.meta.sources[3].status, "ok");
-    assert.equal(payload.data.insights.length, 4);
+    assert.equal(payload.data.meta.sources[4].status, "ok");
+    assert.equal(payload.data.insights.length, 5);
     assert.ok(payload.data.insights.some((item) => item.type === "scholarship" && item.sourceLabel === "Study in Japan"));
     assert.ok(payload.data.insights.every((item) => item.sourceUrl));
     assert.match(payload.data.insights[0].summary, /不等同于院校排名/);
+    assert.ok(payload.data.insights.some((item) => item.sourceLabel.includes("College Scorecard") && item.summary.includes("不构成大学排名")));
+    assert.doesNotMatch(JSON.stringify(payload), /scorecard-test-key/);
     assert.doesNotMatch(JSON.stringify(payload), /demo-2026|PSW 工签|3,120/);
   } finally {
     globalThis.fetch = originalFetch;

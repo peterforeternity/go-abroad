@@ -11,6 +11,7 @@
 | `ALLOWED_ORIGINS` | 非密钥配置 | 严格 CORS 白名单，逗号分隔 origin | 由站点域名和受信前端域名确定 | Variables |
 | `DATA_PROVIDER_BASE_URL` | 非密钥配置 | 真实留学数据供应商 API 地址 | 供应商控制台/合同 | Variables |
 | `DATA_PROVIDER_API_KEY` | 密钥 | 访问真实留学数据供应商 | 供应商控制台创建 | Worker Settings → Variables and Secrets → Secret |
+| `COLLEGE_SCORECARD_API_KEY` | 密钥 | 访问美国教育部 College Scorecard 院校事实 API；不代表排名授权 | College Scorecard / api.data.gov 注册获取 | Worker Settings → Variables and Secrets → Secret |
 | `AUTH_PROVIDER_MODE=d1` | 配置 | 启用 D1 原生邮箱密码认证 | 当前架构固定值 | Variables |
 | `SESSION_SECRET` | 密钥 | HMAC 哈希会话及一次性令牌，至少 32 个随机字符 | 由用户本地密码管理器或 CSPRNG 生成 | Secret；禁止粘贴到聊天或 Git |
 | `SESSION_TTL_SECONDS` | 配置 | 登录会话有效期，默认 14 天，允许 1 小时至 30 天 | 安全策略确定 | Variables |

@@ -18,6 +18,7 @@ export type RuntimeConfig = {
   dataProviderMode: DataProviderMode;
   dataProviderBaseUrl: string | null;
   dataProviderApiKey: string | null;
+  collegeScorecardApiKey: string | null;
   dataProviderEndpoint: string;
   dataProviderTimeoutMs: number;
   dataProviderRetryCount: number;
@@ -195,6 +196,7 @@ export function getRuntimeConfig(source: EnvironmentSource = processEnvironment(
     dataProviderMode: parseDataProviderMode(source.DATA_PROVIDER_MODE, appEnv),
     dataProviderBaseUrl: emptyToNull(source.DATA_PROVIDER_BASE_URL),
     dataProviderApiKey: emptyToNull(source.DATA_PROVIDER_API_KEY),
+    collegeScorecardApiKey: emptyToNull(source.COLLEGE_SCORECARD_API_KEY),
     dataProviderEndpoint: source.DATA_PROVIDER_ENDPOINT?.trim() || "/study-abroad",
     dataProviderTimeoutMs: Math.min(Math.max(parseInteger(source.DATA_PROVIDER_TIMEOUT_MS, 5000), 500), 15000),
     dataProviderRetryCount: Math.min(Math.max(parseInteger(source.DATA_PROVIDER_RETRY_COUNT, 2), 0), 3),

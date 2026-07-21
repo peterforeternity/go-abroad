@@ -39,6 +39,17 @@ type FederalRegisterResult = {
   type?: string;
 };
 type FederalRegisterResponse = { results?: FederalRegisterResult[] };
+type CollegeScorecardInstitution = {
+  id: number;
+  "school.name": string;
+  "school.city": string | null;
+  "school.state": string | null;
+  "school.school_url": string | null;
+  "latest.student.size": number | null;
+  "latest.admissions.admission_rate.overall": number | null;
+  "latest.cost.tuition.out_of_state": number | null;
+};
+type CollegeScorecardResponse = { results?: CollegeScorecardInstitution[] };
 
 type SourceResult = {
   id: string;
@@ -52,12 +63,24 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
   constructor(private readonly config: RuntimeConfig) {}
 
   async getSnapshot(query: StudyDataQuery): Promise<StudyAbroadPayload> {
-    const [settled, crawlSnapshot] = await Promise.all([
-      Promise.allSettled([
+    const sourceDefinitions = [
+      { id: "openalex", label: "OpenAlex", url: "https://openalex.org" },
+      { id: "govuk", label: "GOV.UK", url: "https://www.gov.uk" },
+      { id: "federal-register", label: "Federal Register", url: "https://www.federalregister.gov" },
+      ...(this.config.collegeScorecardApiKey ? [{
+        id: "college-scorecard",
+        label: "U.S. Department of Education College Scorecard",
+        url: "https://collegescorecard.ed.gov",
+      }] : []),
+    ];
+    const sourceRequests = [
       this.loadOpenAlex(),
       this.loadGovUk(),
       this.loadFederalRegister(),
-      ]),
+      ...(this.config.collegeScorecardApiKey ? [this.loadCollegeScorecard()] : []),
+    ];
+    const [settled, crawlSnapshot] = await Promise.all([
+      Promise.allSettled(sourceRequests),
       readCuratedCrawlSnapshot(),
     ]);
     const successful = settled
@@ -86,7 +109,7 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
         source: [...sourceIds, ...(crawledInsights.length > 0 ? ["official-pages"] : [])].join("+") || "public-apis",
         freshness: partial
           ? "部分公开数据源暂时不可用；仅展示已成功获取且可追溯的内容"
-          : "来自无需业务密钥的公开数据接口；请以链接中的原始发布方内容为准",
+          : "来自可追溯的公开数据接口；请以链接中的原始发布方内容为准",
         lastSynced: now,
         lastSyncedAt: now,
         isStale: partial,
@@ -95,12 +118,7 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
         cacheTtlSeconds: this.config.cacheTtlSeconds,
         cacheHit: false,
         sources: [...settled.map((item, index) => {
-          const definitions = [
-            { id: "openalex", label: "OpenAlex", url: "https://openalex.org" },
-            { id: "govuk", label: "GOV.UK", url: "https://www.gov.uk" },
-            { id: "federal-register", label: "Federal Register", url: "https://www.federalregister.gov" },
-          ];
-          return { ...definitions[index], status: item.status === "fulfilled" ? "ok" as const : "unavailable" as const };
+          return { ...sourceDefinitions[index], status: item.status === "fulfilled" ? "ok" as const : "unavailable" as const };
         }), {
           id: "official-pages",
           label: "Curated official pages",
@@ -243,6 +261,62 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
     return { id: "federal-register", label: "Federal Register", url: "https://www.federalregister.gov", insights };
   }
 
+  private async loadCollegeScorecard(): Promise<SourceResult> {
+    const apiKey = this.config.collegeScorecardApiKey;
+    if (!apiKey) throw new UpstreamProviderError("COLLEGE_SCORECARD_NOT_CONFIGURED");
+    const endpoint = new URL("https://api.data.gov/ed/collegescorecard/v1/schools");
+    endpoint.searchParams.set("api_key", apiKey);
+    endpoint.searchParams.set("id", "166683,243744,166027,110635,186131,130794");
+    endpoint.searchParams.set("per_page", "20");
+    endpoint.searchParams.set(
+      "fields",
+      [
+        "id",
+        "school.name",
+        "school.city",
+        "school.state",
+        "school.school_url",
+        "latest.student.size",
+        "latest.admissions.admission_rate.overall",
+        "latest.cost.tuition.out_of_state",
+      ].join(","),
+    );
+    const payload = await this.fetchJson<CollegeScorecardResponse>(endpoint);
+    const insights: Insight[] = (payload.results ?? []).map((institution) => {
+      const location = [institution["school.city"], institution["school.state"]].filter(Boolean).join(", ");
+      const studentSize = institution["latest.student.size"];
+      const admissionRate = institution["latest.admissions.admission_rate.overall"];
+      const tuition = institution["latest.cost.tuition.out_of_state"];
+      const website = normaliseSchoolWebsite(institution["school.school_url"]);
+      return {
+        id: `college-scorecard-${institution.id}`,
+        type: "university",
+        icon: "✦",
+        title: institution["school.name"],
+        summary: `${location || "美国"}；美国教育部 College Scorecard 院校事实记录，不构成大学排名。`,
+        country: "美国",
+        meta: "美国教育部院校数据 · College Scorecard",
+        updated: "最新可用数据",
+        tags: ["美国", "院校", "College Scorecard"],
+        accent: "ink",
+        detail: [
+          `本科生规模：${studentSize === null ? "未提供" : formatCount(studentSize)}`,
+          `整体录取率：${formatPercent(admissionRate)}`,
+          `州外学费：${formatUsd(tuition)}`,
+          "不同字段的最新统计年份可能不同，申请要求和费用请以院校官网为准。",
+        ],
+        sourceLabel: "U.S. Department of Education College Scorecard",
+        sourceUrl: website ?? "https://collegescorecard.ed.gov",
+      };
+    });
+    return {
+      id: "college-scorecard",
+      label: "U.S. Department of Education College Scorecard",
+      url: "https://collegescorecard.ed.gov",
+      insights,
+    };
+  }
+
   private async fetchJson<T>(endpoint: URL): Promise<T> {
     const attempts = this.config.dataProviderRetryCount + 1;
     let lastError: unknown;
@@ -279,6 +353,22 @@ function filterInsights(insights: Insight[], query: StudyDataQuery): Insight[] {
 
 function formatCount(value: number): string {
   return Number.isFinite(value) ? new Intl.NumberFormat("zh-CN").format(value) : "0";
+}
+
+function formatPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "未提供";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatUsd(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "未提供";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+}
+
+function normaliseSchoolWebsite(value: string | null): string | null {
+  if (!value) return null;
+  const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  return safeExternalUrl(candidate);
 }
 
 function formatDate(value?: string): string {
