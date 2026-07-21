@@ -1,5 +1,5 @@
 export type AppEnvironment = "development" | "staging" | "production";
-export const DATA_PROVIDER_MODES = ["demo", "http"] as const;
+export const DATA_PROVIDER_MODES = ["demo", "http", "public-apis"] as const;
 export const CACHE_PROVIDER_MODES = ["memory", "cache-api", "kv"] as const;
 export const RATE_LIMIT_PROVIDER_MODES = ["memory", "kv"] as const;
 export const AUTH_PROVIDER_MODES = ["d1"] as const;
@@ -248,11 +248,13 @@ export function validateRuntimeEnv(
     if (config.allowedOrigins.length === 0) {
       add("ALLOWED_ORIGINS", "must contain at least one explicit origin outside development");
     }
-    if (config.dataProviderMode !== "http") {
+    if (config.dataProviderMode === "demo") {
       add("DATA_PROVIDER_MODE", "demo data is disabled outside development");
     }
-    if (!config.dataProviderBaseUrl) add("DATA_PROVIDER_BASE_URL", "is required for the HTTP provider");
-    if (!config.dataProviderApiKey) add("DATA_PROVIDER_API_KEY", "is required for the HTTP provider");
+    if (config.dataProviderMode === "http") {
+      if (!config.dataProviderBaseUrl) add("DATA_PROVIDER_BASE_URL", "is required for the HTTP provider");
+      if (!config.dataProviderApiKey) add("DATA_PROVIDER_API_KEY", "is required for the HTTP provider");
+    }
     if (config.cacheProvider === "memory") add("CACHE_PROVIDER", "memory cache is development-only");
     if (config.rateLimitProvider !== "kv") add("RATE_LIMIT_PROVIDER", "kv is required outside development");
     if (config.authProviderMode !== "d1") add("AUTH_PROVIDER_MODE", "d1 is required for native authentication");

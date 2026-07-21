@@ -32,6 +32,8 @@ export type Insight = {
   tags: string[];
   accent: string;
   detail: string[];
+  sourceLabel?: string;
+  sourceUrl?: string;
 };
 
 export type StudyAbroadPayload = {
@@ -47,6 +49,12 @@ export type StudyAbroadPayload = {
     generatedAt: string;
     cacheTtlSeconds: number;
     cacheHit?: boolean;
+    sources?: Array<{
+      id: string;
+      label: string;
+      url: string;
+      status: "ok" | "unavailable";
+    }>;
   };
   stats: Array<{ value: string; label: string }>;
   destinations: Destination[];

@@ -6,6 +6,7 @@ import {
 import { getStudyAbroadPayload, type StudyAbroadPayload } from "../study-abroad-data";
 import { logWarn } from "../logger";
 import { getCacheProvider } from "./cache-provider";
+import { PublicApisStudyDataProvider } from "./public-apis-study-data-provider";
 import type {
   StudyDataProvider,
   StudyDataQuery,
@@ -167,6 +168,10 @@ export function getStudyDataProvider(): StudyDataProvider {
       "DEMO_PROVIDER_DISABLED",
       "非开发环境禁止使用演示数据源，请配置真实留学数据供应商",
     );
+  }
+
+  if (config.dataProviderMode === "public-apis") {
+    return new PublicApisStudyDataProvider(config);
   }
 
   requireConfigKeys(

@@ -50,7 +50,7 @@ APP_ENV=staging
 NEXT_PUBLIC_SITE_URL=https://study-abroad-staging.qicheng-study.workers.dev
 ALLOWED_ORIGINS=https://study-abroad-staging.qicheng-study.workers.dev
 ALLOW_DEMO_DATA=false
-DATA_PROVIDER_MODE=http
+DATA_PROVIDER_MODE=public-apis
 CACHE_PROVIDER=kv
 KV_NAMESPACE_BINDING=KV
 RATE_LIMIT_PROVIDER=kv
@@ -66,7 +66,8 @@ RATE_LIMIT_WINDOW_SECONDS=60
 
 Provider 枚举必须与运行时保持一致，不能使用别名或依赖默认分支：
 
-- `DATA_PROVIDER_MODE`：`demo`（仅 development）或 `http`（staging/production 的真实 HTTP 适配器）。
+- `DATA_PROVIDER_MODE`：`demo`（仅 development）、`http`（单一签约 HTTP 数据供应商，需要 URL/API Key）或 `public-apis`（OpenAlex、GOV.UK 与 Federal Register 的公开接口聚合，不需要业务 Secret）。
+- `public-apis` 只展示来源可追溯的院校开放记录和政府政策文件；OpenAlex 研究统计不是院校排名。尚无可靠来源的专业与奖学金分类保持空结果。
 - `CACHE_PROVIDER`：`memory`（仅 development）、`cache-api` 或 `kv`；当前 staging 固定为 `kv`。
 - `RATE_LIMIT_PROVIDER`：`memory`（仅 development）或 `kv`；当前 staging 固定为 `kv`。
 - `AUTH_PROVIDER_MODE`：当前唯一允许值为 `d1`，会话和一次性令牌均只以 HMAC 哈希写入 D1。
@@ -76,7 +77,7 @@ Provider 枚举必须与运行时保持一致，不能使用别名或依赖默�
 
 staging 持久化 Workers Logs 保留应用自定义结构化日志，但关闭 Cloudflare invocation logs，避免持久化完整客户端 IP、地理位置、请求头和 TLS 指纹。自定义日志不得记录请求体、Cookie、Authorization、Access JWT 或完整个人信息。
 
-当前 Access 保护的 staging origin 已用于 `NEXT_PUBLIC_SITE_URL` 和 `ALLOWED_ORIGINS`。邮件暂时使用 Resend 测试发件地址 `onboarding@resend.dev`，只能向 Resend 账户邮箱 `peterforeternal@qq.com` 发送，不得用于其他测试用户或公开注册。`DATA_PROVIDER_BASE_URL` 在未获得真实供应商配置前保持未设置；不得把 `ALLOW_DEMO_DATA` 改回 `true`。
+当前 Access 保护的 staging origin 已用于 `NEXT_PUBLIC_SITE_URL` 和 `ALLOWED_ORIGINS`。邮件暂时使用 Resend 测试发件地址 `onboarding@resend.dev`，只能向 Resend 账户邮箱 `peterforeternal@qq.com` 发送，不得用于其他测试用户或公开注册。`public-apis` 模式不需要 `DATA_PROVIDER_BASE_URL` 或 `DATA_PROVIDER_API_KEY`；这两个配置仅在切换到签约 `http` 供应商时启用。不得把 `ALLOW_DEMO_DATA` 改回 `true`。
 
 ## 4. 配置 Secret
 

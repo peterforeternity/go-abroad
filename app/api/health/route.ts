@@ -10,7 +10,9 @@ export async function GET(request: Request): Promise<Response> {
     const databaseReady = hasDbBinding();
     const studyDataReady = validation.config.dataProviderMode === "demo"
       ? validation.config.appEnv === "development" && validation.config.allowDemoData
-      : Boolean(validation.config.dataProviderBaseUrl && validation.config.dataProviderApiKey);
+      : validation.config.dataProviderMode === "public-apis"
+        ? true
+        : Boolean(validation.config.dataProviderBaseUrl && validation.config.dataProviderApiKey);
     const authenticationReady = databaseReady &&
       validation.config.authProviderMode === "d1" &&
       (validation.config.sessionSecret?.length ?? 0) >= 32;

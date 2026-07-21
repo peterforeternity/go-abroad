@@ -270,6 +270,95 @@ test("staging study data fails safely without falling back to demo data", async 
   assert.doesNotMatch(text, /"source":"demo"|"isDemo":true|PSW|奖学金机会/);
 });
 
+test("aggregates traceable public APIs without demo or ranking claims", async () => {
+  const originalFetch = globalThis.fetch;
+  const kv = createKvBinding();
+  await kv.put('study-abroad:{"q":"","country":"","type":"","limit":50}', JSON.stringify({
+    meta: { isDemo: true, source: "demo", dataVersion: "old-demo" },
+    stats: [{ value: "999", label: "演示" }],
+    destinations: [],
+    insights: [],
+  }));
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "api.openalex.org") {
+      return Response.json({ results: [{
+        id: "https://openalex.org/I1",
+        display_name: "Example University",
+        country_code: "GB",
+        cited_by_count: 1200,
+        works_count: 300,
+        homepage_url: "https://university.example",
+        updated_date: "2026-07-20T00:00:00Z",
+      }] });
+    }
+    if (url.hostname === "www.gov.uk") {
+      return Response.json({ results: [{
+        title: "Student visa guidance",
+        description: "Official UK guidance",
+        link: "/student-visa",
+        public_timestamp: "2026-07-19T00:00:00Z",
+      }] });
+    }
+    if (url.hostname === "www.federalregister.gov") {
+      return Response.json({ results: [{
+        title: "International student notice",
+        abstract: "Official US notice",
+        document_number: "2026-00001",
+        html_url: "https://www.federalregister.gov/documents/2026/00001",
+        publication_date: "2026-07-18",
+        type: "Notice",
+      }] });
+    }
+    throw new Error(`Unexpected public API: ${url.hostname}`);
+  };
+
+  try {
+    const response = await render("/api/study-abroad", {}, {
+      APP_ENV: "staging",
+      ALLOW_DEMO_DATA: "false",
+      DATA_PROVIDER_MODE: "public-apis",
+      CACHE_PROVIDER: "kv",
+      RATE_LIMIT_PROVIDER: "kv",
+      AUTH_PROVIDER_MODE: "d1",
+      EMAIL_PROVIDER_MODE: "resend",
+      KV: kv,
+    });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.data.meta.isDemo, false);
+    assert.equal(payload.data.meta.isStale, false);
+    assert.equal(payload.data.meta.source, "openalex+govuk+federal-register");
+    assert.notEqual(payload.data.meta.dataVersion, "old-demo");
+    assert.equal(payload.data.meta.sources.length, 3);
+    assert.equal(payload.data.insights.length, 3);
+    assert.ok(payload.data.insights.every((item) => item.sourceUrl));
+    assert.match(payload.data.insights[0].summary, /不等同于院校排名/);
+    assert.doesNotMatch(JSON.stringify(payload), /demo-2026|PSW 工签|3,120/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("recognises public API mode without requiring a contracted provider secret", async () => {
+  const response = await render("/api/health", {}, {
+    APP_ENV: "staging",
+    ALLOW_DEMO_DATA: "false",
+    DATA_PROVIDER_MODE: "public-apis",
+    CACHE_PROVIDER: "kv",
+    RATE_LIMIT_PROVIDER: "kv",
+    AUTH_PROVIDER_MODE: "d1",
+    EMAIL_PROVIDER_MODE: "resend",
+    NEXT_PUBLIC_SITE_URL: "https://staging.example.test",
+    ALLOWED_ORIGINS: "https://staging.example.test",
+  });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.data.checks.studyDataProvider, true);
+  assert.ok(!payload.data.issueKeys.includes("DATA_PROVIDER_BASE_URL"));
+  assert.ok(!payload.data.issueKeys.includes("DATA_PROVIDER_API_KEY"));
+});
+
 test("rejects provider enum aliases instead of using implicit fallbacks", async () => {
   for (const [key, value] of [
     ["DATA_PROVIDER_MODE", "external"],
@@ -463,7 +552,7 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(stagingConfig, /"crons"\s*:\s*\[\s*"\*\/5 \* \* \* \*"\s*\]/);
   assert.match(stagingConfig, /"workers_dev": true/);
   assert.match(stagingConfig, /"preview_urls": false/);
-  assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "http"/);
+  assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "public-apis"/);
   assert.match(stagingConfig, /"CACHE_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_REQUESTS": "100"/);
@@ -478,7 +567,7 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(stagingConfig, /"invocation_logs"\s*:\s*false/);
   assert.doesNotMatch(stagingConfig, /"routes"\s*:/);
   assert.doesNotMatch(stagingConfig, /"secrets"\s*:/);
-  assert.match(stagingExample, /"DATA_PROVIDER_MODE": "http"/);
+  assert.match(stagingExample, /"DATA_PROVIDER_MODE": "public-apis"/);
   assert.match(stagingExample, /"AUTH_PROVIDER_MODE": "d1"/);
   assert.match(stagingExample, /"EMAIL_PROVIDER_MODE": "resend"/);
   assert.match(stagingExample, /"observability"\s*:\s*\{/);

@@ -479,7 +479,7 @@ export default function Home() {
             <div className="orbit-core">
               <span>{primaryDestination ? primaryDestination.flag : "STAGING"}</span>
               <strong>{primaryDestination?.country ?? dataCopy.title}</strong>
-              <small>{primaryDestination ? `${primaryDestination.stat} 个可用项目` : "当前为受限测试环境"}</small>
+              <small>{primaryDestination ? `${primaryDestination.stat} ${primaryDestination.statLabel}` : "当前为受限测试环境"}</small>
             </div>
             {primaryDestination && (
               <div className="floating-card floating-card-top">
@@ -734,6 +734,11 @@ export default function Home() {
               <div className="detail-tags">{selectedInsight.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div>
               <p className="detail-lead">{selectedInsight.summary}</p>
               <div className="detail-copy">{selectedInsight.detail.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
+              {selectedInsight.sourceUrl && selectedInsight.sourceLabel && (
+                <a className="button-quiet" href={selectedInsight.sourceUrl} target="_blank" rel="noreferrer">
+                  查看来源：{selectedInsight.sourceLabel} ↗
+                </a>
+              )}
               <button className="button-primary detail-save" onClick={() => toggleSaved(selectedInsight.id)}>
                 {savedIds.includes(selectedInsight.id) ? "已保存到我的清单" : "保存到我的清单"} <span>{savedIds.includes(selectedInsight.id) ? "✓" : "↗"}</span>
               </button>

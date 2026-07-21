@@ -161,7 +161,7 @@
 ### 改造后仍然不能视为生产完成的部分
 
 - 认证、注册、邮箱验证、密码重置仍没有真实服务端实现；`AuthProvider` 和 `EmailProvider` 是等待用户选定供应商的占位适配器，主页表单仍明确显示演示状态。
-- 当前没有真实留学数据供应商密钥，API 默认只在 development 使用 demo；staging/production 缺少 `DATA_PROVIDER_BASE_URL`/`DATA_PROVIDER_API_KEY` 会安全失败。
+- staging 已支持无需业务密钥的 `public-apis` 聚合模式（OpenAlex、GOV.UK、Federal Register），并保留签约 `http` 供应商适配器。演示数据仍仅限 development；`http` 模式缺少 `DATA_PROVIDER_BASE_URL`/`DATA_PROVIDER_API_KEY` 会安全失败。
 - production `.openai/hosting.json` 保持不变；独立的未跟踪 `wrangler.staging.jsonc` 仅包含 staging D1/KV ID，绑定名为 `DB`/`KV`，不保存 Secret。staging 远程 D1 已按顺序应用两个 migration 并完成结构验证。
 - 监控适配器在 development 记录结构化控制台事件，非 development 未配置监控时记录告警并继续提供受保护的错误响应；需要真实监控 DSN/Token 才能完成告警闭环。
 - 生产限流优先使用 KV 适配；没有 KV 时返回 503。正式 1000 并发验收前还需要压测并评估 Durable Objects/Cloudflare Rate Limiting 的原子性和成本。

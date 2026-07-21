@@ -19,7 +19,11 @@ export async function GET(request: Request): Promise<Response> {
     const rateLimit = await enforceRateLimit(request, "study-data");
     const cacheKey = buildCacheKey(query);
     const cache = getCacheProvider();
-    const cached = await cache.get<StudyAbroadPayload>(cacheKey);
+    let cached = await cache.get<StudyAbroadPayload>(cacheKey);
+    if (cached?.meta.isDemo && !(config.appEnv === "development" && config.allowDemoData)) {
+      await cache.delete(cacheKey);
+      cached = null;
+    }
     const payload = cached
       ? withCacheMetadata(cached, true)
       : await getStudyDataProvider().getSnapshot(query);
