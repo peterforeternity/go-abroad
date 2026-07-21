@@ -698,6 +698,27 @@ h2 em,
 .section-heading { align-items: end; margin-bottom: 30px; }
 .text-link { background: transparent; color: var(--ink-soft); font-size: 12px; padding: 8px 0; }
 .text-link span { color: var(--coral); font-family: Georgia, serif; font-size: 16px; margin-left: 7px; }
+
+.data-brief { background: var(--ink); border-radius: 18px; color: var(--white); display: grid; gap: 26px; grid-template-columns: 0.85fr 1.35fr 0.65fr; margin: 0 0 24px; overflow: hidden; padding: 25px 27px; position: relative; }
+.data-brief::after { border: 1px solid rgba(255,253,248,.1); border-radius: 50%; content: ""; height: 220px; position: absolute; right: -85px; top: -95px; width: 220px; }
+.data-brief .section-kicker { color: var(--sun); }
+.data-brief-summary strong { display: block; font-family: Georgia, serif; font-size: 43px; font-weight: 400; line-height: 1; margin-top: 13px; }
+.data-brief-summary p { color: rgba(255,253,248,.58); font-size: 10px; line-height: 1.6; margin: 8px 0 0; max-width: 190px; }
+.distribution-chart { display: flex; flex-direction: column; gap: 9px; justify-content: center; }
+.distribution-chart button { background: transparent; color: var(--white); padding: 0; text-align: left; }
+.distribution-chart button > span { display: flex; font-size: 9px; justify-content: space-between; margin-bottom: 4px; }
+.distribution-chart button small { color: rgba(255,253,248,.5); }
+.distribution-chart i { background: rgba(255,253,248,.1); border-radius: 99px; display: block; height: 5px; overflow: hidden; }
+.distribution-chart em { background: linear-gradient(90deg,var(--coral),var(--sun)); border-radius: inherit; display: block; height: 100%; min-width: 0; transition: width 300ms ease; }
+.source-pulse { align-self: center; border-left: 1px solid rgba(255,253,248,.14); display: flex; flex-direction: column; padding-left: 23px; position: relative; z-index: 1; }
+.source-pulse span { color: rgba(255,253,248,.52); font-size: 9px; }
+.source-pulse strong { color: var(--sun); font-family: Georgia,serif; font-size: 27px; font-weight: 400; margin: 3px 0; }
+.source-pulse small { color: rgba(255,253,248,.64); font-size: 9px; line-height: 1.45; }
+
+.insight-card { border-bottom: 1px solid var(--line); display: grid; gap: 14px; grid-template-columns: 38px minmax(0,1fr) auto; padding: 24px 0; position: relative; }
+.insight-card-featured { background: var(--white); border: 1px solid rgba(24,55,51,.08); border-radius: 17px; box-shadow: var(--shadow); margin: 0 0 13px; padding: 27px 24px; }
+.insight-card-featured::before { background: var(--coral); border-radius: 99px; content: "EDITOR'S PICK"; color: var(--white); font-size: 7px; font-weight: 800; letter-spacing: .12em; padding: 4px 8px; position: absolute; right: 20px; top: -8px; }
+.insight-card blockquote { border-left: 2px solid var(--coral-soft); color: var(--ink-soft); font-family: Georgia,"Songti SC",serif; font-size: 13px; line-height: 1.65; margin: 14px 0 16px; padding: 2px 0 2px 14px; }
 .text-link:hover { color: var(--coral); }
 
 .destination-grid { display: grid; gap: 14px; grid-template-columns: repeat(4, 1fr); }
@@ -958,6 +979,10 @@ h2 em,
   .destination-grid { grid-template-columns: repeat(2, 1fr); }
   .destination-card { min-height: 265px; }
   .insights-layout { gap: 30px; grid-template-columns: minmax(0, 1.45fr) minmax(285px, 0.8fr); }
+  .data-brief { grid-template-columns: .8fr 1.2fr; }
+  .source-pulse { border-left: 0; border-top: 1px solid rgba(255,253,248,.14); flex-direction: row; gap: 10px; grid-column: 1 / -1; padding-left: 0; padding-top: 14px; }
+  .source-pulse strong { font-size: 18px; margin: 0; }
+  .source-pulse small { margin-left: auto; }
 }
 
 @media (max-width: 760px) {
@@ -993,6 +1018,12 @@ h2 em,
   .destination-mini-row { grid-template-columns: 1fr; gap: 0; }
   .insights-layout { display: flex; flex-direction: column; gap: 44px; margin-bottom: 75px; }
   .filter-bar { align-items: flex-start; flex-direction: column; gap: 13px; }
+  .data-brief { display: block; padding: 22px 20px; }
+  .data-brief-summary p { max-width: 270px; }
+  .distribution-chart { margin-top: 22px; }
+  .source-pulse { margin-top: 20px; }
+  .insight-card-featured { padding: 23px 18px; }
+  .insight-card blockquote { font-size: 12px; }
   .filter-tabs { gap: 15px; max-width: 100%; overflow-x: auto; width: 100%; }
   .filter-tab { flex: 0 0 auto; }
   .country-select-wrap { align-self: end; }

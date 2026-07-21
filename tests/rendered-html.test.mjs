@@ -656,10 +656,16 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "public-apis"/);
   assert.match(stagingConfig, /"CRAWLER_ENABLED": "true"/);
   assert.match(stagingConfig, /"CRAWLER_INTERVAL_SECONDS": "21600"/);
-  assert.match(stagingConfig, /"CRAWLER_MAX_PAGES": "16"/);
+  assert.match(stagingConfig, /"CRAWLER_MAX_PAGES": "20"/);
   assert.match(stagingConfig, /"CRAWLER_MAX_BYTES": "1048576"/);
   assert.match(stagingConfig, /"CACHE_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_PROVIDER": "kv"/);
+  assert.match(page, /className="data-brief"/);
+  assert.match(page, /insight-card-featured/);
+  assert.match(crawlerSource, /oxford-graduate-admissions/);
+  assert.match(crawlerSource, /cambridge-postgraduate-apply/);
+  assert.match(crawlerSource, /imperial-postgraduate-admissions/);
+  assert.match(crawlerSource, /ucl-graduate-apply/);
   assert.match(stagingConfig, /"RATE_LIMIT_REQUESTS": "100"/);
   assert.match(stagingConfig, /"AUTH_PROVIDER_MODE": "d1"/);
   assert.match(stagingConfig, /"EMAIL_PROVIDER_MODE": "resend"/);

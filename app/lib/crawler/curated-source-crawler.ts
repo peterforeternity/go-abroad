@@ -136,6 +136,42 @@ const SEEDS: readonly CrawlSeed[] = [
     accent: "ink",
     tags: ["Yale", "申请与资助", "院校官网"],
   },
+  {
+    id: "oxford-graduate-admissions",
+    url: "https://www.ox.ac.uk/admissions/graduate",
+    label: "University of Oxford",
+    country: "英国",
+    type: "university",
+    accent: "coral",
+    tags: ["Oxford", "研究生申请", "院校官网"],
+  },
+  {
+    id: "cambridge-postgraduate-apply",
+    url: "https://www.postgraduate.study.cam.ac.uk/apply",
+    label: "University of Cambridge",
+    country: "英国",
+    type: "university",
+    accent: "coral",
+    tags: ["Cambridge", "研究生申请", "院校官网"],
+  },
+  {
+    id: "imperial-postgraduate-admissions",
+    url: "https://www.imperial.ac.uk/study/help-centre/postgraduate-admissions/how-do-i-apply-for-postgraduate-study.php",
+    label: "Imperial College London",
+    country: "英国",
+    type: "university",
+    accent: "coral",
+    tags: ["Imperial", "研究生申请", "院校官网"],
+  },
+  {
+    id: "ucl-graduate-apply",
+    url: "https://www.ucl.ac.uk/study/prospective-students/graduate/how-apply",
+    label: "University College London",
+    country: "英国",
+    type: "university",
+    accent: "coral",
+    tags: ["UCL", "研究生申请", "院校官网"],
+  },
 ] as const;
 
 for (const seed of SEEDS) ALLOWED_HOSTS.add(new URL(seed.url).hostname);

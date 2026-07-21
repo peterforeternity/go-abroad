@@ -297,6 +297,17 @@ export default function Home() {
     });
   }, [data, query, selectedCountry, selectedType]);
 
+  const insightDistribution = useMemo(() => {
+    const total = data?.insights.length ?? 0;
+    return (Object.keys(TYPE_LABELS) as InsightType[]).map((type) => {
+      const count = data?.insights.filter((item) => item.type === type).length ?? 0;
+      return { type, count, percent: total ? Math.max(6, Math.round((count / total) * 100)) : 0 };
+    });
+  }, [data]);
+
+  const sourceCount = data?.meta.sources?.filter((source) => source.status === "ok").length ?? 0;
+  const countryCount = new Set(data?.insights.map((item) => item.country) ?? []).size;
+
   const liveData = isLivePayload(data, dataState);
   const dataCopy = dataStateCopy(dataState);
   const primaryDestination = data?.destinations[0] ?? null;
@@ -612,6 +623,28 @@ export default function Home() {
             </div>
             <span className="result-count">{data ? `${visibleInsights.length} 条匹配` : "暂无数据"}</span>
           </div>
+          {data && (
+            <div className="data-brief" aria-label="当前信息构成">
+              <div className="data-brief-summary">
+                <span className="section-kicker">DATA BRIEF · 数据切片</span>
+                <strong>{data.insights.length}</strong>
+                <p>条可追溯信息，覆盖 {countryCount} 个国家与 {sourceCount} 个当前可用来源。</p>
+              </div>
+              <div className="distribution-chart">
+                {insightDistribution.map(({ type, count, percent }) => (
+                  <button key={type} onClick={() => setSelectedType(type)} aria-label={`筛选${TYPE_LABELS[type]}，${count}条`}>
+                    <span><b>{TYPE_LABELS[type]}</b><small>{count}</small></span>
+                    <i><em style={{ width: `${percent}%` }} /></i>
+                  </button>
+                ))}
+              </div>
+              <div className="source-pulse">
+                <span>来源状态</span>
+                <strong>{sourceCount}/{data.meta.sources?.length ?? sourceCount}</strong>
+                <small>{data.meta.isStale ? "部分来源暂不可用" : "当前来源均可追溯"}</small>
+              </div>
+            </div>
+          )}
           <div className="filter-bar">
             <div className="filter-tabs" role="tablist" aria-label="信息类型">
               {(Object.keys(TYPE_LABELS) as Array<InsightType | "all">).map((type) => (
@@ -825,12 +858,13 @@ function InsightCard({
   onSave: () => void;
 }) {
   return (
-    <article className="insight-card">
+    <article className={`insight-card ${index === 0 ? "insight-card-featured" : ""}`}>
       <div className={`insight-number insight-number-${insight.accent}`}>0{index + 1}</div>
       <div className="insight-card-content">
         <div className="insight-card-top"><span className={`type-badge type-${insight.accent}`}><i>{insight.icon}</i>{TYPE_LABELS[insight.type]}</span><span>{insight.country}</span><span className="insight-updated">{insight.updated}</span></div>
         <button className="insight-title-button" onClick={onOpen}><h3>{insight.title}</h3></button>
         <p>{insight.summary}</p>
+        {index === 0 && insight.detail[0] && <blockquote>{insight.detail[0]}</blockquote>}
         <div className="insight-card-bottom"><div className="insight-tags">{insight.tags.map((tag) => <span key={tag}>{tag}</span>)}</div><span>{insight.meta}</span></div>
       </div>
       <div className="insight-card-actions"><button className={isSaved ? "save-button saved" : "save-button"} onClick={onSave} aria-label={isSaved ? "取消收藏" : "收藏"}>{isSaved ? "♥" : "♡"}</button><button className="open-button" onClick={onOpen} aria-label="打开详情">↗</button></div>
