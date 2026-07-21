@@ -21,6 +21,10 @@ export type RuntimeConfig = {
   dataProviderEndpoint: string;
   dataProviderTimeoutMs: number;
   dataProviderRetryCount: number;
+  crawlerEnabled: boolean;
+  crawlerIntervalSeconds: number;
+  crawlerMaxPages: number;
+  crawlerMaxBytes: number;
   allowDemoData: boolean;
   cacheProvider: CacheProviderMode;
   cacheTtlSeconds: number;
@@ -194,6 +198,13 @@ export function getRuntimeConfig(source: EnvironmentSource = processEnvironment(
     dataProviderEndpoint: source.DATA_PROVIDER_ENDPOINT?.trim() || "/study-abroad",
     dataProviderTimeoutMs: Math.min(Math.max(parseInteger(source.DATA_PROVIDER_TIMEOUT_MS, 5000), 500), 15000),
     dataProviderRetryCount: Math.min(Math.max(parseInteger(source.DATA_PROVIDER_RETRY_COUNT, 2), 0), 3),
+    crawlerEnabled: parseBoolean(source.CRAWLER_ENABLED, false, "CRAWLER_ENABLED"),
+    crawlerIntervalSeconds: Math.min(
+      Math.max(parseInteger(source.CRAWLER_INTERVAL_SECONDS, 21600), 3600),
+      604800,
+    ),
+    crawlerMaxPages: Math.min(Math.max(parseInteger(source.CRAWLER_MAX_PAGES, 8), 1), 20),
+    crawlerMaxBytes: Math.min(Math.max(parseInteger(source.CRAWLER_MAX_BYTES, 1048576), 65536), 2097152),
     allowDemoData: parseBoolean(
       source.ALLOW_DEMO_DATA,
       appEnv === "development",

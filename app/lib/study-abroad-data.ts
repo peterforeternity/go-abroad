@@ -53,7 +53,7 @@ export type StudyAbroadPayload = {
       id: string;
       label: string;
       url: string;
-      status: "ok" | "unavailable";
+      status: "ok" | "stale" | "unavailable";
     }>;
   };
   stats: Array<{ value: string; label: string }>;

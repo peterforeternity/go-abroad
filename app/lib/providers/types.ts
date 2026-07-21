@@ -48,6 +48,7 @@ export type MonitoringProvider = {
 export type StudyDataProvider = {
   getSnapshot(query: StudyDataQuery): Promise<StudyDataSnapshot>;
   sync(): Promise<StudyDataSyncResult>;
+  refresh?(): Promise<void>;
 };
 
 export class ProviderNotConfiguredError extends Error {

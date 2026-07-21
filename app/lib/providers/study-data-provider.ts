@@ -184,6 +184,7 @@ export function getStudyDataProvider(): StudyDataProvider {
 
 export async function runStudyDataSync(): Promise<StudyDataSyncResult> {
   const provider = getStudyDataProvider();
+  await provider.refresh?.();
   const snapshot = await provider.getSnapshot({});
   if (snapshot.meta.isDemo) {
     throw new ProviderNotConfiguredError(

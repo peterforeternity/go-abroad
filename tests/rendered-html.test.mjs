@@ -279,6 +279,27 @@ test("aggregates traceable public APIs without demo or ranking claims", async ()
     destinations: [],
     insights: [],
   }));
+  const crawlTime = new Date().toISOString();
+  await kv.put("study-crawler:curated:v1", JSON.stringify({
+    version: 1,
+    lastAttemptAt: crawlTime,
+    lastSuccessAt: crawlTime,
+    errors: [],
+    pages: [{
+      id: "official-scholarship",
+      url: "https://www.studyinjapan.go.jp/en/search-for-scholarships/tuition-reduction_search.php?lang=en",
+      sourceLabel: "Study in Japan",
+      country: "日本",
+      type: "scholarship",
+      accent: "blue",
+      tags: ["奖学金", "日本"],
+      title: "Scholarship and tuition reduction system",
+      description: "Official scholarship search information.",
+      sections: ["Confirm current eligibility and deadlines with the scholarship organisation."],
+      crawledAt: crawlTime,
+      contentHash: "1234abcd",
+    }],
+  }));
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
     if (url.hostname === "api.openalex.org") {
@@ -328,10 +349,12 @@ test("aggregates traceable public APIs without demo or ranking claims", async ()
     const payload = await response.json();
     assert.equal(payload.data.meta.isDemo, false);
     assert.equal(payload.data.meta.isStale, false);
-    assert.equal(payload.data.meta.source, "openalex+govuk+federal-register");
+    assert.equal(payload.data.meta.source, "openalex+govuk+federal-register+official-pages");
     assert.notEqual(payload.data.meta.dataVersion, "old-demo");
-    assert.equal(payload.data.meta.sources.length, 3);
-    assert.equal(payload.data.insights.length, 3);
+    assert.equal(payload.data.meta.sources.length, 4);
+    assert.equal(payload.data.meta.sources[3].status, "ok");
+    assert.equal(payload.data.insights.length, 4);
+    assert.ok(payload.data.insights.some((item) => item.type === "scholarship" && item.sourceLabel === "Study in Japan"));
     assert.ok(payload.data.insights.every((item) => item.sourceUrl));
     assert.match(payload.data.insights[0].summary, /不等同于院校排名/);
     assert.doesNotMatch(JSON.stringify(payload), /demo-2026|PSW 工签|3,120/);
@@ -522,12 +545,13 @@ test("enforces the development CORS allowlist", async () => {
 test("keeps staging UI readiness and deployment configuration aligned", async () => {
   await assert.rejects(access(new URL("app/_sites-preview", root)));
 
-  const [page, layout, packageJson, stagingConfig, stagingExample] = await Promise.all([
+  const [page, layout, packageJson, stagingConfig, stagingExample, crawlerSource] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
     readFile(new URL("wrangler.staging.jsonc", root), "utf8"),
     readFile(new URL("wrangler.staging.example.jsonc", root), "utf8"),
+    readFile(new URL("app/lib/crawler/curated-source-crawler.ts", root), "utf8"),
   ]);
 
   assert.doesNotMatch(page, /STUDY_ABROAD_FALLBACK/);
@@ -553,6 +577,10 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(stagingConfig, /"workers_dev": true/);
   assert.match(stagingConfig, /"preview_urls": false/);
   assert.match(stagingConfig, /"DATA_PROVIDER_MODE": "public-apis"/);
+  assert.match(stagingConfig, /"CRAWLER_ENABLED": "true"/);
+  assert.match(stagingConfig, /"CRAWLER_INTERVAL_SECONDS": "21600"/);
+  assert.match(stagingConfig, /"CRAWLER_MAX_PAGES": "8"/);
+  assert.match(stagingConfig, /"CRAWLER_MAX_BYTES": "1048576"/);
   assert.match(stagingConfig, /"CACHE_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_PROVIDER": "kv"/);
   assert.match(stagingConfig, /"RATE_LIMIT_REQUESTS": "100"/);
@@ -568,8 +596,14 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.doesNotMatch(stagingConfig, /"routes"\s*:/);
   assert.doesNotMatch(stagingConfig, /"secrets"\s*:/);
   assert.match(stagingExample, /"DATA_PROVIDER_MODE": "public-apis"/);
+  assert.match(stagingExample, /"CRAWLER_ENABLED": "true"/);
   assert.match(stagingExample, /"AUTH_PROVIDER_MODE": "d1"/);
   assert.match(stagingExample, /"EMAIL_PROVIDER_MODE": "resend"/);
   assert.match(stagingExample, /"observability"\s*:\s*\{/);
   assert.match(stagingExample, /"invocation_logs"\s*:\s*false/);
+  assert.match(crawlerSource, /robotsPermission/);
+  assert.match(crawlerSource, /redirect: "manual"/);
+  assert.match(crawlerSource, /HOST_NOT_ALLOWLISTED/);
+  assert.match(crawlerSource, /PAGE_TOO_LARGE/);
+  assert.doesNotMatch(crawlerSource, /Cookie|Authorization/);
 });

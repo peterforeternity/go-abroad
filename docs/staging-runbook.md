@@ -67,7 +67,8 @@ RATE_LIMIT_WINDOW_SECONDS=60
 Provider 枚举必须与运行时保持一致，不能使用别名或依赖默认分支：
 
 - `DATA_PROVIDER_MODE`：`demo`（仅 development）、`http`（单一签约 HTTP 数据供应商，需要 URL/API Key）或 `public-apis`（OpenAlex、GOV.UK 与 Federal Register 的公开接口聚合，不需要业务 Secret）。
-- `public-apis` 只展示来源可追溯的院校开放记录和政府政策文件；OpenAlex 研究统计不是院校排名。尚无可靠来源的专业与奖学金分类保持空结果。
+- `public-apis` 展示来源可追溯的院校开放记录和政府政策文件；OpenAlex 研究统计不是院校排名。课程和奖学金分类仅展示定向采集器从官方页面提取的有限摘要，不宣称为完整目录。
+- staging 同时启用定向官方页面采集器：Cron 每 5 分钟检查一次，实际页面采集最多每 6 小时一次，结果写入独立 KV 缓存。采集器使用固定域名白名单并遵守 robots.txt；详情见 `docs/crawler.md`。
 - `CACHE_PROVIDER`：`memory`（仅 development）、`cache-api` 或 `kv`；当前 staging 固定为 `kv`。
 - `RATE_LIMIT_PROVIDER`：`memory`（仅 development）或 `kv`；当前 staging 固定为 `kv`。
 - `AUTH_PROVIDER_MODE`：当前唯一允许值为 `d1`，会话和一次性令牌均只以 HMAC 哈希写入 D1。

@@ -1,4 +1,9 @@
 import type { RuntimeConfig } from "../env";
+import {
+  crawledPagesToInsights,
+  readCuratedCrawlSnapshot,
+  refreshCuratedSources,
+} from "../crawler/curated-source-crawler";
 import type { Destination, Insight, StudyAbroadPayload } from "../study-abroad-data";
 import type { StudyDataProvider, StudyDataQuery, StudyDataSyncResult } from "./types";
 import { UpstreamProviderError } from "./types";
@@ -47,10 +52,13 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
   constructor(private readonly config: RuntimeConfig) {}
 
   async getSnapshot(query: StudyDataQuery): Promise<StudyAbroadPayload> {
-    const settled = await Promise.allSettled([
+    const [settled, crawlSnapshot] = await Promise.all([
+      Promise.allSettled([
       this.loadOpenAlex(),
       this.loadGovUk(),
       this.loadFederalRegister(),
+      ]),
+      readCuratedCrawlSnapshot(),
     ]);
     const successful = settled
       .filter((item): item is PromiseFulfilledResult<SourceResult> => item.status === "fulfilled")
@@ -62,7 +70,8 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
 
     const now = new Date().toISOString();
     const partial = successful.length !== settled.length;
-    const allInsights = successful.flatMap((source) => source.insights);
+    const crawledInsights = crawledPagesToInsights(crawlSnapshot);
+    const allInsights = [...successful.flatMap((source) => source.insights), ...crawledInsights];
     const filteredInsights = filterInsights(allInsights, query);
     const destinations = successful.flatMap((source) => source.destinations ?? []);
     const sourceIds = successful.map((source) => source.id);
@@ -74,7 +83,7 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
       meta: {
         version: dataVersion,
         dataVersion,
-        source: sourceIds.join("+") || "public-apis",
+        source: [...sourceIds, ...(crawledInsights.length > 0 ? ["official-pages"] : [])].join("+") || "public-apis",
         freshness: partial
           ? "部分公开数据源暂时不可用；仅展示已成功获取且可追溯的内容"
           : "来自无需业务密钥的公开数据接口；请以链接中的原始发布方内容为准",
@@ -85,19 +94,25 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
         generatedAt: now,
         cacheTtlSeconds: this.config.cacheTtlSeconds,
         cacheHit: false,
-        sources: settled.map((item, index) => {
+        sources: [...settled.map((item, index) => {
           const definitions = [
             { id: "openalex", label: "OpenAlex", url: "https://openalex.org" },
             { id: "govuk", label: "GOV.UK", url: "https://www.gov.uk" },
             { id: "federal-register", label: "Federal Register", url: "https://www.federalregister.gov" },
           ];
           return { ...definitions[index], status: item.status === "fulfilled" ? "ok" as const : "unavailable" as const };
-        }),
+        }), {
+          id: "official-pages",
+          label: "Curated official pages",
+          url: "https://study-abroad-staging.qicheng-study.workers.dev",
+          status: crawlerStatus(crawlSnapshot, this.config.crawlerIntervalSeconds),
+        }],
       },
       stats: [
         { value: String(new Set(destinations.map((item) => item.country)).size), label: "有院校记录的国家" },
         { value: String(institutionCount), label: "公开院校记录" },
         { value: String(policyCount), label: "政府政策文件" },
+        { value: String(allInsights.filter((item) => item.type === "major" || item.type === "scholarship").length), label: "课程与奖学金来源" },
       ],
       destinations,
       insights: filteredInsights,
@@ -114,6 +129,10 @@ export class PublicApisStudyDataProvider implements StudyDataProvider {
       lastSyncedAt: snapshot.meta.lastSyncedAt,
       message: "已从公开数据接口同步",
     };
+  }
+
+  async refresh(): Promise<void> {
+    await refreshCuratedSources(this.config);
   }
 
   private async loadOpenAlex(): Promise<SourceResult> {
@@ -285,4 +304,13 @@ function safeExternalUrl(value: string | null | undefined): string | null {
 async function digestVersion(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return `public-${Array.from(new Uint8Array(digest)).slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function crawlerStatus(
+  snapshot: Awaited<ReturnType<typeof readCuratedCrawlSnapshot>>,
+  intervalSeconds: number,
+): "ok" | "stale" | "unavailable" {
+  if (!snapshot?.lastSuccessAt || snapshot.pages.length === 0) return "unavailable";
+  const age = Date.now() - Date.parse(snapshot.lastSuccessAt);
+  return Number.isFinite(age) && age <= intervalSeconds * 2 * 1000 ? "ok" : "stale";
 }
