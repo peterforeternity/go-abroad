@@ -40,6 +40,8 @@
 	},
 	"vars": {
 		"APP_ENV": "staging",
+		"NEXT_PUBLIC_SITE_URL": "https://study-abroad-staging.qicheng-study.workers.dev",
+		"ALLOWED_ORIGINS": "https://study-abroad-staging.qicheng-study.workers.dev",
 		"ALLOW_DEMO_DATA": "false",
 		"DATA_PROVIDER_MODE": "http",
 		"CACHE_PROVIDER": "kv",

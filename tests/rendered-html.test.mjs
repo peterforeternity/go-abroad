@@ -456,6 +456,8 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.doesNotMatch(layout, /codex-preview|Starter Project/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(stagingConfig, /"name": "study-abroad-staging"/);
+  assert.match(stagingConfig, /"NEXT_PUBLIC_SITE_URL": "https:\/\/study-abroad-staging\.qicheng-study\.workers\.dev"/);
+  assert.match(stagingConfig, /"ALLOWED_ORIGINS": "https:\/\/study-abroad-staging\.qicheng-study\.workers\.dev"/);
   assert.match(stagingConfig, /"binding": "DB"/);
   assert.match(stagingConfig, /"binding": "KV"/);
   assert.match(stagingConfig, /"crons"\s*:\s*\[\s*"\*\/5 \* \* \* \*"\s*\]/);

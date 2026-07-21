@@ -47,6 +47,8 @@ npx wrangler kv namespace create study-abroad-staging-kv --binding KV --config w
 
 ```env
 APP_ENV=staging
+NEXT_PUBLIC_SITE_URL=https://study-abroad-staging.qicheng-study.workers.dev
+ALLOWED_ORIGINS=https://study-abroad-staging.qicheng-study.workers.dev
 ALLOW_DEMO_DATA=false
 DATA_PROVIDER_MODE=http
 CACHE_PROVIDER=kv
@@ -72,7 +74,7 @@ Provider 枚举必须与运行时保持一致，不能使用别名或依赖默�
 
 staging 持久化 Workers Logs 保留应用自定义结构化日志，但关闭 Cloudflare invocation logs，避免持久化完整客户端 IP、地理位置、请求头和 TLS 指纹。自定义日志不得记录请求体、Cookie、Authorization、Access JWT 或完整个人信息。
 
-以下变量在未获得真实外部配置前保持未设置，不得编造：`NEXT_PUBLIC_SITE_URL`、`ALLOWED_ORIGINS`、`DATA_PROVIDER_BASE_URL`、`MAIL_FROM`。如果数据或邮件供应商尚未配置，对应接口必须安全失败；不得把 `ALLOW_DEMO_DATA` 改回 `true`。
+当前 Access 保护的 staging origin 已用于 `NEXT_PUBLIC_SITE_URL` 和 `ALLOWED_ORIGINS`。以下变量在未获得真实外部配置前保持未设置，不得编造：`DATA_PROVIDER_BASE_URL`、`MAIL_FROM`。如果数据或邮件供应商尚未配置，对应接口必须安全失败；不得把 `ALLOW_DEMO_DATA` 改回 `true`。
 
 ## 4. 配置 Secret
 
