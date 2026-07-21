@@ -49,6 +49,8 @@
 		"RATE_LIMIT_PROVIDER": "kv",
 		"AUTH_PROVIDER_MODE": "d1",
 		"EMAIL_PROVIDER_MODE": "resend",
+		"MAIL_FROM": "启程 <onboarding@resend.dev>",
+		"MAIL_REPLY_TO": "peterforeternal@qq.com",
 		"SESSION_TTL_SECONDS": "1209600",
 		"CACHE_TTL_SECONDS": "300",
 		"RATE_LIMIT_REQUESTS": "100",

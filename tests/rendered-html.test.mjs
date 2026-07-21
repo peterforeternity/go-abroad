@@ -469,6 +469,8 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(stagingConfig, /"RATE_LIMIT_REQUESTS": "100"/);
   assert.match(stagingConfig, /"AUTH_PROVIDER_MODE": "d1"/);
   assert.match(stagingConfig, /"EMAIL_PROVIDER_MODE": "resend"/);
+  assert.match(stagingConfig, /"MAIL_FROM": "启程 <onboarding@resend\.dev>"/);
+  assert.match(stagingConfig, /"MAIL_REPLY_TO": "peterforeternal@qq\.com"/);
   assert.match(stagingConfig, /"SESSION_TTL_SECONDS": "1209600"/);
   assert.match(stagingConfig, /"observability"\s*:\s*\{/);
   assert.match(stagingConfig, /"enabled"\s*:\s*true/);

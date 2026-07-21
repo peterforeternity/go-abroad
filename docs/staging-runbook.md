@@ -56,6 +56,8 @@ KV_NAMESPACE_BINDING=KV
 RATE_LIMIT_PROVIDER=kv
 AUTH_PROVIDER_MODE=d1
 EMAIL_PROVIDER_MODE=resend
+MAIL_FROM=启程 <onboarding@resend.dev>
+MAIL_REPLY_TO=peterforeternal@qq.com
 SESSION_TTL_SECONDS=1209600
 CACHE_TTL_SECONDS=300
 RATE_LIMIT_REQUESTS=100
@@ -74,7 +76,7 @@ Provider 枚举必须与运行时保持一致，不能使用别名或依赖默�
 
 staging 持久化 Workers Logs 保留应用自定义结构化日志，但关闭 Cloudflare invocation logs，避免持久化完整客户端 IP、地理位置、请求头和 TLS 指纹。自定义日志不得记录请求体、Cookie、Authorization、Access JWT 或完整个人信息。
 
-当前 Access 保护的 staging origin 已用于 `NEXT_PUBLIC_SITE_URL` 和 `ALLOWED_ORIGINS`。以下变量在未获得真实外部配置前保持未设置，不得编造：`DATA_PROVIDER_BASE_URL`、`MAIL_FROM`。如果数据或邮件供应商尚未配置，对应接口必须安全失败；不得把 `ALLOW_DEMO_DATA` 改回 `true`。
+当前 Access 保护的 staging origin 已用于 `NEXT_PUBLIC_SITE_URL` 和 `ALLOWED_ORIGINS`。邮件暂时使用 Resend 测试发件地址 `onboarding@resend.dev`，只能向 Resend 账户邮箱 `peterforeternal@qq.com` 发送，不得用于其他测试用户或公开注册。`DATA_PROVIDER_BASE_URL` 在未获得真实供应商配置前保持未设置；不得把 `ALLOW_DEMO_DATA` 改回 `true`。
 
 ## 4. 配置 Secret
 
