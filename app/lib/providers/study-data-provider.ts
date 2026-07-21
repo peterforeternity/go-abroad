@@ -192,11 +192,13 @@ export async function runStudyDataSync(): Promise<StudyDataSyncResult> {
       "当前为演示数据源，未配置真实数据供应商，不能伪造同步结果",
     );
   }
-  if (snapshot.meta.isStale) throw new UpstreamProviderError("UPSTREAM_STALE_NOT_SYNCED");
 
   const config = getRuntimeConfig();
   const cache = getCacheProvider();
   await cache.set(DEFAULT_STUDY_DATA_CACHE_KEY, snapshot, config.cacheTtlSeconds);
+  if (snapshot.meta.isStale) {
+    throw new UpstreamProviderError("UPSTREAM_PARTIAL_CACHED");
+  }
   return {
     synced: true,
     source: snapshot.meta.source,

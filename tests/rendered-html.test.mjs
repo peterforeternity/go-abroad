@@ -381,6 +381,65 @@ test("aggregates traceable public APIs without demo or ranking claims", async ()
   }
 });
 
+test("scheduled sync caches traceable partial data without reporting complete success", async () => {
+  const originalFetch = globalThis.fetch;
+  const kv = createKvBinding();
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "api.openalex.org") throw new Error("temporary upstream failure");
+    if (url.hostname === "www.gov.uk") return Response.json({ results: [] });
+    if (url.hostname === "www.federalregister.gov") return Response.json({ results: [] });
+    if (url.hostname === "api.data.gov") {
+      return Response.json({ results: [{
+        id: 166683,
+        "school.name": "Massachusetts Institute of Technology",
+        "school.city": "Cambridge",
+        "school.state": "MA",
+        "school.school_url": "web.mit.edu",
+        "latest.student.size": 4600,
+        "latest.admissions.admission_rate.overall": 0.041,
+        "latest.cost.tuition.out_of_state": 60156,
+      }] });
+    }
+    throw new Error(`Unexpected public API: ${url.hostname}`);
+  };
+
+  try {
+    await render("/api/health");
+    let scheduledWork;
+    await worker.scheduled(
+      { cron: "*/5 * * * *", scheduledTime: Date.now() },
+      {
+        APP_ENV: "staging",
+        NEXT_PUBLIC_SITE_URL: "https://staging.example.test",
+        ALLOWED_ORIGINS: "https://staging.example.test",
+        ALLOW_DEMO_DATA: "false",
+        DATA_PROVIDER_MODE: "public-apis",
+        CRAWLER_ENABLED: "false",
+        CACHE_PROVIDER: "kv",
+        KV_NAMESPACE_BINDING: "KV",
+        RATE_LIMIT_PROVIDER: "kv",
+        AUTH_PROVIDER_MODE: "d1",
+        EMAIL_PROVIDER_MODE: "resend",
+        COLLEGE_SCORECARD_API_KEY: "scorecard-test-key",
+        KV: kv,
+      },
+      {
+        waitUntil(promise) { scheduledWork = promise; },
+        passThroughOnException() {},
+      },
+    );
+    await scheduledWork;
+    const cached = await kv.get('study-abroad:{"q":"","country":"","type":"","limit":50}', "json");
+    assert.equal(cached.meta.isDemo, false);
+    assert.equal(cached.meta.isStale, true);
+    assert.match(cached.meta.source, /college-scorecard/);
+    assert.ok(cached.insights.some((item) => item.sourceLabel.includes("College Scorecard")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("recognises public API mode without requiring a contracted provider secret", async () => {
   const response = await render("/api/health", {}, {
     APP_ENV: "staging",

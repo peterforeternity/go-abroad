@@ -36,6 +36,8 @@ Crawler output is stored in the staging KV namespace under `study-crawler:curate
 
 The normal study-data snapshot remains cached separately. Crawler errors are recorded only as source IDs and public error codes; response bodies, full HTML, cookies, request headers, IP addresses, and secrets are not logged.
 
+If one public API is temporarily unavailable, Cron may cache the remaining non-demo snapshot with `isStale=true` so users can still inspect traceable sources. The scheduled run continues to log `UPSTREAM_PARTIAL_CACHED` as a failure and never reports a partial refresh as a successful complete sync.
+
 ## Configuration
 
 | Variable | Staging value | Meaning |
