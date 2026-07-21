@@ -237,8 +237,10 @@ test("keeps staging UI readiness and deployment configuration aligned", async ()
   assert.match(stagingConfig, /"observability"\s*:\s*\{/);
   assert.match(stagingConfig, /"enabled"\s*:\s*true/);
   assert.match(stagingConfig, /"head_sampling_rate"\s*:\s*1/);
+  assert.match(stagingConfig, /"invocation_logs"\s*:\s*false/);
   assert.doesNotMatch(stagingConfig, /"routes"\s*:/);
   assert.doesNotMatch(stagingConfig, /"secrets"\s*:/);
   assert.match(stagingExample, /"DATA_PROVIDER_MODE": "http"/);
   assert.match(stagingExample, /"observability"\s*:\s*\{/);
+  assert.match(stagingExample, /"invocation_logs"\s*:\s*false/);
 });
