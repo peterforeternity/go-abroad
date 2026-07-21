@@ -188,3 +188,16 @@
 - `staging_smoke_test` 已在新 KV 中完成写入、读取、删除，删除后再次读取为 404。
 - Worker `study-abroad-staging` 已上传一个 100% 活跃版本；版本详情包含 `fetch`/`scheduled` handler、`DB`/`KV` 绑定。提交的 staging 配置使用 `workers_dev=true` 以承载 Access 保护的 workers.dev 入口，保持 `preview_urls=false`、无 route、无正式域名；Access 保护状态需由控制台确认。
 - Cloudflare schedules API 已确认且仅包含 `*/5 * * * *`；Wrangler local `--test-scheduled` 返回 `Ran scheduled event`，并以 `ConfigurationError` 结构化失败，没有写入业务表。不得在 Access 保护前启用 HTTP 入口。
+
+## 第三阶段：D1 + Resend 认证实现
+
+认证供应商路线已经确定为 D1 原生邮箱密码认证与 Resend 事务邮件。代码现已包含注册、邮箱验证、登录、当前会话、退出、忘记密码和重置密码 API；前端演示提交逻辑已替换为真实 API 调用，并移除了未配置的 ChatGPT 登录入口。
+
+- 密码使用带随机盐的 PBKDF2-SHA256（210,000 次迭代），不会记录或保存明文。
+- 会话、邮箱验证和密码重置使用随机不透明令牌；D1 仅保存以独立 `SESSION_SECRET` 计算的 HMAC-SHA256。
+- staging/production 会话 Cookie 使用 `__Host-`、`Secure`、`HttpOnly`、`SameSite=Strict`。
+- `drizzle/0002_plain_spot.sql` 新增 `sessions` 表、唯一哈希索引、用户/过期索引和级联外键；已在独立 staging D1 应用并验证，四张业务表仍为 0 行。
+- Resend 适配使用服务端 `POST /emails`、8 秒超时和幂等键；API Key 不进入浏览器、日志或 Git。
+- 本地测试已覆盖完整注册、验证、登录、会话、重置和旧会话撤销流程。
+
+在用户创建并安全配置 staging `SESSION_SECRET`、Resend Sending access key、已验证发件域名、`MAIL_FROM` 和 staging URL/origin 前，线上认证接口会安全返回配置错误。这不影响 `/api/health` 的基础可观测性。公开认证前仍需加入 Turnstile，并评估强一致限流。

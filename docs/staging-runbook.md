@@ -52,6 +52,9 @@ DATA_PROVIDER_MODE=http
 CACHE_PROVIDER=kv
 KV_NAMESPACE_BINDING=KV
 RATE_LIMIT_PROVIDER=kv
+AUTH_PROVIDER_MODE=d1
+EMAIL_PROVIDER_MODE=resend
+SESSION_TTL_SECONDS=1209600
 CACHE_TTL_SECONDS=300
 RATE_LIMIT_REQUESTS=100
 RATE_LIMIT_WINDOW_SECONDS=60
@@ -62,12 +65,14 @@ Provider 枚举必须与运行时保持一致，不能使用别名或依赖默�
 - `DATA_PROVIDER_MODE`：`demo`（仅 development）或 `http`（staging/production 的真实 HTTP 适配器）。
 - `CACHE_PROVIDER`：`memory`（仅 development）、`cache-api` 或 `kv`；当前 staging 固定为 `kv`。
 - `RATE_LIMIT_PROVIDER`：`memory`（仅 development）或 `kv`；当前 staging 固定为 `kv`。
+- `AUTH_PROVIDER_MODE`：当前唯一允许值为 `d1`，会话和一次性令牌均只以 HMAC 哈希写入 D1。
+- `EMAIL_PROVIDER_MODE`：当前唯一允许值为 `resend`，浏览器不会接触邮件 API Key。
 
 非法值会返回 `CONFIGURATION_ERROR`；staging/production 不会回退到 demo、内存缓存或内存限流。
 
 staging 持久化 Workers Logs 保留应用自定义结构化日志，但关闭 Cloudflare invocation logs，避免持久化完整客户端 IP、地理位置、请求头和 TLS 指纹。自定义日志不得记录请求体、Cookie、Authorization、Access JWT 或完整个人信息。
 
-以下变量在未获得真实外部配置前保持未设置，不得编造：`NEXT_PUBLIC_SITE_URL`、`ALLOWED_ORIGINS`、`DATA_PROVIDER_BASE_URL`、`AUTH_ISSUER_URL`、`AUTH_CLIENT_ID`、`MAIL_FROM`。如果数据、认证或邮件供应商尚未配置，对应接口必须安全失败；不得把 `ALLOW_DEMO_DATA` 改回 `true`。
+以下变量在未获得真实外部配置前保持未设置，不得编造：`NEXT_PUBLIC_SITE_URL`、`ALLOWED_ORIGINS`、`DATA_PROVIDER_BASE_URL`、`MAIL_FROM`。如果数据或邮件供应商尚未配置，对应接口必须安全失败；不得把 `ALLOW_DEMO_DATA` 改回 `true`。
 
 ## 4. 配置 Secret
 
@@ -75,7 +80,6 @@ staging 持久化 Workers Logs 保留应用自定义结构化日志，但关闭 
 
 ```sh
 for key in \
-  AUTH_CLIENT_SECRET \
   SESSION_SECRET \
   EMAIL_PROVIDER_API_KEY \
   DATA_PROVIDER_API_KEY \
@@ -134,6 +138,8 @@ npx wrangler deploy --config wrangler.staging.jsonc
 ```
 
 当前部署结果：Worker 版本已经上传并处于 100% 活跃状态，Wrangler 已成功写入 Cron `*/5 * * * *`。staging 使用 `workers_dev:true`、`preview_urls:false`，无 route/custom domain；必须先确认 workers.dev 已由 Cloudflare Access 保护，再做 HTTP 验证。
+
+应用 `0002_plain_spot.sql` 并配置 Resend 后，认证私有验收还应覆盖：注册发送验证邮件、未验证账户拒绝登录、验证后登录、`HttpOnly/Secure/SameSite=Strict` 会话 Cookie、退出、重置密码以及重置后旧会话失效。测试邮箱只能使用授权测试人员邮箱，不得批量发送。
 
 部署后在私有 staging 地址执行：
 

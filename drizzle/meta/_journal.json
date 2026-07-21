@@ -15,6 +15,13 @@
       "when": 1784003863583,
       "tag": "0001_adorable_morlun",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784602789586,
+      "tag": "0002_plain_spot",
+      "breakpoints": true
     }
   ]
 }

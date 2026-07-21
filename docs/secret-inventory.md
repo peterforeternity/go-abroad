@@ -11,11 +11,11 @@
 | `ALLOWED_ORIGINS` | 非密钥配置 | 严格 CORS 白名单，逗号分隔 origin | 由站点域名和受信前端域名确定 | Variables |
 | `DATA_PROVIDER_BASE_URL` | 非密钥配置 | 真实留学数据供应商 API 地址 | 供应商控制台/合同 | Variables |
 | `DATA_PROVIDER_API_KEY` | 密钥 | 访问真实留学数据供应商 | 供应商控制台创建 | Worker Settings → Variables and Secrets → Secret |
-| `AUTH_ISSUER_URL` | 配置 | OIDC/Auth 服务 issuer | 选定 Auth0、WorkOS、Clerk 等供应商后获取 | Variables |
-| `AUTH_CLIENT_ID` | 配置 | OIDC 客户端标识 | 认证供应商控制台 | Variables |
-| `AUTH_CLIENT_SECRET` | 密钥 | OIDC 客户端认证 | 认证供应商控制台生成 | Secret |
-| `SESSION_SECRET` | 密钥 | 服务端会话签名/加密 | 由用户本地密码管理器或 CSPRNG 生成 | Secret；禁止粘贴到聊天或 Git |
-| `EMAIL_PROVIDER_API_KEY` | 密钥 | 邮箱验证和密码重置邮件 | Resend、Postmark 等选定供应商控制台 | Secret |
+| `AUTH_PROVIDER_MODE=d1` | 配置 | 启用 D1 原生邮箱密码认证 | 当前架构固定值 | Variables |
+| `SESSION_SECRET` | 密钥 | HMAC 哈希会话及一次性令牌，至少 32 个随机字符 | 由用户本地密码管理器或 CSPRNG 生成 | Secret；禁止粘贴到聊天或 Git |
+| `SESSION_TTL_SECONDS` | 配置 | 登录会话有效期，默认 14 天，允许 1 小时至 30 天 | 安全策略确定 | Variables |
+| `EMAIL_PROVIDER_MODE=resend` | 配置 | 使用 Resend 发送验证和重置邮件 | 当前架构固定值 | Variables |
+| `EMAIL_PROVIDER_API_KEY` | 密钥 | 邮箱验证和密码重置邮件 | Resend Dashboard → API Keys；创建 Sending access 且限制到发件域名 | Secret |
 | `MAIL_FROM` | 配置 | 验证邮件发件人 | 邮箱供应商验证后的域名地址 | Variables |
 | `MAIL_REPLY_TO` | 配置 | 邮件回复地址 | 业务邮箱确定 | Variables |
 | `TURNSTILE_SITE_KEY` | 配置 | 浏览器端 Bot Protection 标识 | Cloudflare Turnstile 控制台 | Variables；可公开 |
@@ -44,3 +44,4 @@
 - 每个环境使用独立凭证、独立 D1/KV 资源和独立回调 URL；禁止 staging 复用 production 密钥。
 - 密钥轮换后先在 staging 验证，再撤销旧值；泄露时立即撤销，不等待代码发布。
 - API 日志只允许记录 request ID、路由、状态和耗时；密码、Token、Cookie、Authorization 和完整 API Key 必须脱敏。
+- Resend 发件域名应使用独立子域并完成 SPF、DKIM，建议同时配置 DMARC；staging 和 production 使用不同的 Sending access API Key。

@@ -83,10 +83,15 @@ function getProvider(): RateLimitProvider {
   return new UnavailableRateLimitProvider();
 }
 
-function clientKey(request: Request, scope: string): string {
+async function clientKey(request: Request, scope: string): Promise<string> {
   const forwarded = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for");
   const ip = forwarded?.split(",")[0]?.trim() || "unknown";
-  return `${scope}:${ip}`;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${scope}:${ip}`));
+  const identifier = Array.from(
+    new Uint8Array(digest).slice(0, 16),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${scope}:${identifier}`;
 }
 
 export async function enforceRateLimit(
@@ -96,7 +101,7 @@ export async function enforceRateLimit(
 ): Promise<RateLimitDecision> {
   const config = getRuntimeConfig();
   const decision = await getProvider().check(
-    clientKey(request, scope),
+    await clientKey(request, scope),
     options.limit ?? config.rateLimitRequests,
     options.windowSeconds ?? config.rateLimitWindowSeconds,
   );

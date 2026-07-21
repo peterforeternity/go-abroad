@@ -8,7 +8,7 @@ import {
   type StudyAbroadPayload,
 } from "./lib/study-abroad-data";
 
-type AuthMode = "login" | "signup" | "reset";
+type AuthMode = "login" | "signup" | "reset" | "reset-confirm";
 type ModalType = "auth" | "assessment" | null;
 type StudyDataState = "loading" | "ready" | "degraded" | "unconfigured" | "error";
 type HealthState = "loading" | "ready" | "degraded" | "unknown";
@@ -38,6 +38,8 @@ type HealthPayload = {
     database: boolean;
     studyDataProvider: boolean;
     demoData: boolean;
+    authentication: boolean;
+    email: boolean;
   };
   issueKeys: string[];
   generatedAt: string;
@@ -46,6 +48,19 @@ type HealthPayload = {
 type HealthApiBody = {
   ok?: boolean;
   data?: HealthPayload;
+};
+
+type AuthUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  emailVerified: boolean;
+};
+
+type AuthApiBody = {
+  ok?: boolean;
+  data?: AuthUser | { message?: string };
+  error?: { code?: string; message?: string };
 };
 
 function unwrapStudyData(body: StudyDataApiBody): StudyAbroadPayload | null {
@@ -116,6 +131,15 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState("");
   const [activeNav, setActiveNav] = useState("探索目的地");
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [resetToken, setResetToken] = useState("");
+
+  const showToast = (message: string) => setToast(message);
+  const openAuth = (mode: AuthMode = "login") => {
+    setAuthMode(mode);
+    setModal("auth");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +192,57 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (response.status === 401) return null;
+        const body = (await response.json()) as AuthApiBody;
+        if (!response.ok || body.ok !== true || !body.data || !("email" in body.data)) return null;
+        return body.data as AuthUser;
+      })
+      .then((user) => {
+        if (!cancelled) setAuthUser(user);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const verificationToken = url.searchParams.get("verify_token");
+    const passwordResetToken = url.searchParams.get("reset_token");
+    if (verificationToken) {
+      fetch("/api/auth/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: verificationToken }),
+      })
+        .then(async (response) => {
+          const body = (await response.json()) as AuthApiBody;
+          if (!response.ok) throw new Error(body.error?.message ?? "邮箱验证失败");
+          showToast("邮箱验证成功 · 现在可以登录");
+          openAuth("login");
+        })
+        .catch((error) => showToast(error instanceof Error ? error.message : "邮箱验证失败"));
+    } else if (passwordResetToken) {
+      window.setTimeout(() => {
+        setResetToken(passwordResetToken);
+        openAuth("reset-confirm");
+      }, 0);
+    }
+    if (verificationToken || passwordResetToken) {
+      url.searchParams.delete("verify_token");
+      url.searchParams.delete("reset_token");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
   }, []);
 
   useEffect(() => {
@@ -228,8 +303,6 @@ export default function Home() {
   const primaryInsight = data?.insights[0] ?? null;
   const controlsDisabled = !data || dataState === "loading" || dataState === "unconfigured" || dataState === "error";
 
-  const showToast = (message: string) => setToast(message);
-
   const scrollTo = (id: string, label?: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
     if (label) setActiveNav(label);
@@ -286,9 +359,15 @@ export default function Home() {
     showToast(`已切换到 ${destination.country} · 为你筛选相关信息`);
   };
 
-  const openAuth = (mode: AuthMode = "login") => {
-    setAuthMode(mode);
-    setModal("auth");
+  const handleLogout = async () => {
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("退出失败");
+      setAuthUser(null);
+      showToast("已安全退出");
+    } catch {
+      showToast("暂时无法退出，请稍后重试");
+    }
   };
 
   const resetAssessment = () => {
@@ -342,9 +421,15 @@ export default function Home() {
           >
             ⌕
           </button>
-          <button className="signin-button" onClick={() => openAuth("login")}>
-            登录 / 注册 <span>↗</span>
-          </button>
+          {authUser ? (
+            <button className="signin-button" onClick={handleLogout} title="点击安全退出">
+              {authUser.displayName || authUser.email} <span>↗</span>
+            </button>
+          ) : (
+            <button className="signin-button" disabled={authLoading} onClick={() => openAuth("login")}>
+              {authLoading ? "检查登录状态" : "登录 / 注册"} <span>↗</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -662,6 +747,11 @@ export default function Home() {
           mode={authMode}
           onClose={() => setModal(null)}
           onModeChange={setAuthMode}
+          resetToken={resetToken}
+          onAuthenticated={(user) => {
+            setAuthUser(user);
+            setModal(null);
+          }}
           onSuccess={(message) => showToast(message)}
         />
       )}
@@ -747,37 +837,99 @@ function AuthModal({
   mode,
   onClose,
   onModeChange,
+  resetToken,
+  onAuthenticated,
   onSuccess,
 }: {
   mode: AuthMode;
   onClose: () => void;
   onModeChange: (mode: AuthMode) => void;
+  resetToken: string;
+  onAuthenticated: (user: AuthUser) => void;
   onSuccess: (message: string) => void;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const titles = { login: "欢迎回来", signup: "从你的第一步开始", reset: "找回你的路线" };
+  const titles = { login: "欢迎回来", signup: "从你的第一步开始", reset: "找回你的路线", "reset-confirm": "设置新密码" };
   const descriptions = {
     login: "保存你的选择，随时回来继续规划。",
     signup: "创建一个免费账户，把灵感变成申请清单。",
     reset: "输入注册邮箱，我们会把下一步发给你。",
+    "reset-confirm": "设置一个新的安全密码，完成后所有旧会话都会失效。",
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!email.includes("@")) {
+    setMessage("");
+    if (mode !== "reset-confirm" && !email.includes("@")) {
       setMessage("请输入有效的邮箱地址");
       return;
     }
-    if (mode !== "reset" && password.length < 6) {
-      setMessage("密码至少需要 6 位字符");
+    if (mode !== "reset" && password.length < 12) {
+      setMessage("密码至少需要 12 个字符");
       return;
     }
-    setMessage(mode === "signup" ? "验证邮件已发送到你的邮箱（演示）" : mode === "reset" ? "重置链接已发送（演示）" : "登录成功，欢迎回来（演示）");
-    window.setTimeout(() => onSuccess(mode === "signup" ? "账户已创建 · 继续探索吧" : mode === "reset" ? "重置邮件已发送" : "登录成功 · 你的清单已准备好"), 500);
+    if (mode !== "reset" && (!/[A-Za-z]/.test(password) || !/\d/.test(password))) {
+      setMessage("密码必须同时包含字母和数字");
+      return;
+    }
+    if ((mode === "signup" || mode === "reset-confirm") && password !== passwordConfirmation) {
+      setMessage("两次输入的密码不一致");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const endpoint = mode === "signup"
+        ? "/api/auth/register"
+        : mode === "login"
+          ? "/api/auth/login"
+          : mode === "reset"
+            ? "/api/auth/forgot-password"
+            : "/api/auth/reset-password";
+      const payload = mode === "signup"
+        ? { email, password, displayName: name }
+        : mode === "login"
+          ? { email, password }
+          : mode === "reset"
+            ? { email }
+            : { token: resetToken, password };
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json()) as AuthApiBody;
+      if (!response.ok || body.ok !== true) {
+        throw new Error(body.error?.message ?? "操作失败，请稍后重试");
+      }
+      if (mode === "login" && body.data && "email" in body.data) {
+        onAuthenticated(body.data as AuthUser);
+        onSuccess("登录成功 · 你的清单已准备好");
+        return;
+      }
+      if (mode === "signup") {
+        setMessage("账户已创建，请前往邮箱完成验证");
+        onSuccess("验证邮件已发送");
+      } else if (mode === "reset") {
+        setMessage("如果该邮箱已注册，重置邮件将很快送达");
+        onSuccess("密码重置请求已受理");
+      } else {
+        setMessage("密码已更新，现在可以登录");
+        onModeChange("login");
+        setPassword("");
+        setPasswordConfirmation("");
+        onSuccess("密码已安全更新");
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "操作失败，请稍后重试");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -791,19 +943,18 @@ function AuthModal({
           <div className="auth-aside-note"><span className="mini-icon mini-sun">✹</span><span><strong>免费使用</strong><small>收藏、比较和申请时间线都不收费</small></span></div>
         </div>
         <div className="auth-form-panel">
-          <div className="auth-form-heading"><span className="section-kicker">{mode === "reset" ? "安全找回" : "个人工作台"}</span><h3>{titles[mode]}</h3><p>{descriptions[mode]}</p></div>
-          {mode !== "reset" && <div className="auth-tabs"><button className={mode === "login" ? "active" : ""} onClick={() => { onModeChange("login"); setMessage(""); }}>登录</button><button className={mode === "signup" ? "active" : ""} onClick={() => { onModeChange("signup"); setMessage(""); }}>注册</button></div>}
+          <div className="auth-form-heading"><span className="section-kicker">{mode === "reset" || mode === "reset-confirm" ? "安全找回" : "个人工作台"}</span><h3>{titles[mode]}</h3><p>{descriptions[mode]}</p></div>
+          {(mode === "login" || mode === "signup") && <div className="auth-tabs"><button className={mode === "login" ? "active" : ""} onClick={() => { onModeChange("login"); setMessage(""); }}>登录</button><button className={mode === "signup" ? "active" : ""} onClick={() => { onModeChange("signup"); setMessage(""); }}>注册</button></div>}
           <form onSubmit={handleSubmit} className="auth-form">
             {mode === "signup" && <label>你的称呼<input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：林墨" autoComplete="name" /></label>}
-            <label>邮箱地址<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required /></label>
-            {mode !== "reset" && <label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 6 位字符" autoComplete={mode === "login" ? "current-password" : "new-password"} required /></label>}
+            {mode !== "reset-confirm" && <label>邮箱地址<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required /></label>}
+            {mode !== "reset" && <label>{mode === "reset-confirm" ? "新密码" : "密码"}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="12–128 位，包含字母和数字" autoComplete={mode === "login" ? "current-password" : "new-password"} required /></label>}
+            {(mode === "signup" || mode === "reset-confirm") && <label>确认密码<input type="password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} placeholder="再次输入密码" autoComplete="new-password" required /></label>}
             {mode === "login" && <button type="button" className="form-link" onClick={() => { onModeChange("reset"); setMessage(""); }}>忘记密码？</button>}
-            {message && <div className="form-message">{message}</div>}
-            <button className="button-primary auth-submit" type="submit">{mode === "login" ? "登录启程" : mode === "signup" ? "创建免费账户" : "发送重置链接"} <span>↗</span></button>
+            {message && <div className="form-message" role="status">{message}</div>}
+            <button className="button-primary auth-submit" disabled={submitting} type="submit">{submitting ? "正在安全处理" : mode === "login" ? "登录启程" : mode === "signup" ? "创建免费账户" : mode === "reset" ? "发送重置链接" : "更新密码"} <span>↗</span></button>
           </form>
-          <div className="auth-divider"><span>或</span></div>
-          <a className="chatgpt-button" href="/signin-with-chatgpt?return_to=%2F"><span className="chatgpt-symbol">✳</span> 使用 ChatGPT 账户继续</a>
-          <p className="auth-legal">继续即表示你同意启程的服务条款与隐私政策。<br />邮箱验证与密码服务接入后将启用完整账户安全能力。</p>
+          <p className="auth-legal">继续即表示你同意启程的服务条款与隐私政策。<br />账户密码经过单向哈希处理，邮件验证与重置链接均会自动失效。</p>
         </div>
       </div>
     </div>

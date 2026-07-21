@@ -63,3 +63,26 @@ export const authTokens = sqliteTable(
     }).onDelete("cascade"),
   }),
 );
+
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    revokedAt: text("revoked_at"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    tokenHashIndex: uniqueIndex("sessions_token_hash_unique").on(table.tokenHash),
+    userIndex: index("sessions_user_id_idx").on(table.userId),
+    expiryIndex: index("sessions_expires_at_idx").on(table.expiresAt),
+    userForeignKey: foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "sessions_user_id_fk",
+    }).onDelete("cascade"),
+  }),
+);

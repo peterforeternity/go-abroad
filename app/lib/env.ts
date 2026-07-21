@@ -2,10 +2,14 @@ export type AppEnvironment = "development" | "staging" | "production";
 export const DATA_PROVIDER_MODES = ["demo", "http"] as const;
 export const CACHE_PROVIDER_MODES = ["memory", "cache-api", "kv"] as const;
 export const RATE_LIMIT_PROVIDER_MODES = ["memory", "kv"] as const;
+export const AUTH_PROVIDER_MODES = ["d1"] as const;
+export const EMAIL_PROVIDER_MODES = ["resend"] as const;
 
 export type DataProviderMode = (typeof DATA_PROVIDER_MODES)[number];
 export type CacheProviderMode = (typeof CACHE_PROVIDER_MODES)[number];
 export type RateLimitProviderMode = (typeof RATE_LIMIT_PROVIDER_MODES)[number];
+export type AuthProviderMode = (typeof AUTH_PROVIDER_MODES)[number];
+export type EmailProviderMode = (typeof EMAIL_PROVIDER_MODES)[number];
 
 export type RuntimeConfig = {
   appEnv: AppEnvironment;
@@ -24,10 +28,10 @@ export type RuntimeConfig = {
   rateLimitProvider: RateLimitProviderMode;
   rateLimitRequests: number;
   rateLimitWindowSeconds: number;
-  authIssuerUrl: string | null;
-  authClientId: string | null;
-  authClientSecret: string | null;
+  authProviderMode: AuthProviderMode;
   sessionSecret: string | null;
+  sessionTtlSeconds: number;
+  emailProviderMode: EmailProviderMode;
   emailProviderApiKey: string | null;
   emailFrom: string | null;
   emailReplyTo: string | null;
@@ -161,6 +165,22 @@ function parseRateLimitProvider(value: string | undefined, appEnv: AppEnvironmen
   );
 }
 
+function parseProviderMode<T extends string>(
+  value: string | undefined,
+  key: string,
+  allowed: readonly T[],
+  developmentDefault: T,
+  appEnv: AppEnvironment,
+): T {
+  if (!value?.trim()) {
+    if (appEnv === "development") return developmentDefault;
+    throw new ConfigurationError(`${key} is required outside development`, [key]);
+  }
+  const normalized = value.trim();
+  if (allowed.includes(normalized as T)) return normalized as T;
+  throw new ConfigurationError(`${key} must be one of: ${allowed.join(", ")}`, [key]);
+}
+
 export function getRuntimeConfig(source: EnvironmentSource = processEnvironment()): RuntimeConfig {
   const appEnv = parseEnvironment(source.APP_ENV ?? source.NODE_ENV);
 
@@ -185,10 +205,25 @@ export function getRuntimeConfig(source: EnvironmentSource = processEnvironment(
     rateLimitProvider: parseRateLimitProvider(source.RATE_LIMIT_PROVIDER, appEnv),
     rateLimitRequests: Math.min(Math.max(parseInteger(source.RATE_LIMIT_REQUESTS, 120), 1), 10000),
     rateLimitWindowSeconds: Math.min(Math.max(parseInteger(source.RATE_LIMIT_WINDOW_SECONDS, 60), 1), 3600),
-    authIssuerUrl: emptyToNull(source.AUTH_ISSUER_URL),
-    authClientId: emptyToNull(source.AUTH_CLIENT_ID),
-    authClientSecret: emptyToNull(source.AUTH_CLIENT_SECRET),
+    authProviderMode: parseProviderMode(
+      source.AUTH_PROVIDER_MODE,
+      "AUTH_PROVIDER_MODE",
+      AUTH_PROVIDER_MODES,
+      "d1",
+      appEnv,
+    ),
     sessionSecret: emptyToNull(source.SESSION_SECRET),
+    sessionTtlSeconds: Math.min(
+      Math.max(parseInteger(source.SESSION_TTL_SECONDS, 60 * 60 * 24 * 14), 3600),
+      60 * 60 * 24 * 30,
+    ),
+    emailProviderMode: parseProviderMode(
+      source.EMAIL_PROVIDER_MODE,
+      "EMAIL_PROVIDER_MODE",
+      EMAIL_PROVIDER_MODES,
+      "resend",
+      appEnv,
+    ),
     emailProviderApiKey: emptyToNull(source.EMAIL_PROVIDER_API_KEY),
     emailFrom: emptyToNull(source.MAIL_FROM),
     emailReplyTo: emptyToNull(source.MAIL_REPLY_TO),
@@ -220,10 +255,11 @@ export function validateRuntimeEnv(
     if (!config.dataProviderApiKey) add("DATA_PROVIDER_API_KEY", "is required for the HTTP provider");
     if (config.cacheProvider === "memory") add("CACHE_PROVIDER", "memory cache is development-only");
     if (config.rateLimitProvider !== "kv") add("RATE_LIMIT_PROVIDER", "kv is required outside development");
-    if (!config.authIssuerUrl) add("AUTH_ISSUER_URL", "is required before enabling public authentication");
-    if (!config.authClientId) add("AUTH_CLIENT_ID", "is required before enabling public authentication");
-    if (!config.authClientSecret) add("AUTH_CLIENT_SECRET", "is required before enabling public authentication");
-    if (!config.sessionSecret) add("SESSION_SECRET", "is required for server sessions");
+    if (config.authProviderMode !== "d1") add("AUTH_PROVIDER_MODE", "d1 is required for native authentication");
+    if (!config.sessionSecret || config.sessionSecret.length < 32) {
+      add("SESSION_SECRET", "must contain at least 32 characters for server sessions");
+    }
+    if (config.emailProviderMode !== "resend") add("EMAIL_PROVIDER_MODE", "resend is required for transactional email");
     if (!config.emailProviderApiKey) add("EMAIL_PROVIDER_API_KEY", "is required for verification and reset email");
     if (!config.emailFrom) add("MAIL_FROM", "is required for verification and reset email");
     if (!config.monitoringDsn) add("MONITORING_DSN", "is required for production monitoring");
